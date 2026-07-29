@@ -25,7 +25,6 @@ function refreshProjects() {
   projectListRef.value?.refresh();
 }
 
-// 亮色主题
 const theme = null;
 </script>
 
@@ -47,7 +46,7 @@ const theme = null;
             <div class="search-row">
               <NInput
                 v-model:value="search"
-                placeholder="🔍 搜索项目名（实时过滤）"
+                placeholder="🔍 搜索项目名（实时过滤，支持拖拽文件夹添加）"
                 clearable
               />
             </div>

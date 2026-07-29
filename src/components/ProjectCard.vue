@@ -1,17 +1,31 @@
 <script setup lang="ts">
-// 单个项目卡片：操作按钮全部接线
-import { ref } from "vue";
-import { NButton, NSpace, NTag, useDialog, useMessage } from "naive-ui";
+// 单个项目卡片
+import { computed, ref } from "vue";
+import {
+  NBadge,
+  NButton,
+  NDropdown,
+  NSpace,
+  NTag,
+  useDialog,
+  useMessage,
+} from "naive-ui";
 import type { OpenKind, Project } from "../types";
 import {
   openTarget,
   removeProject,
+  renameProject,
   scanProject,
+  selectCbp,
+  selectDcf,
   toggleProjectStar,
 } from "../api";
 
 const props = defineProps<{ project: Project; invalid: boolean }>();
-const emit = defineEmits<{ (e: "refresh"): void }>();
+const emit = defineEmits<{
+  (e: "refresh"): void;
+  (e: "duplicate", id: string): void;
+}>();
 
 const message = useMessage();
 const dialog = useDialog();
@@ -34,11 +48,31 @@ function startEdit() {
 
 function cancelEdit() {
   editing.value = false;
+  nameDraft.value = props.project.name;
 }
 
+let committing = false;
 async function commitEdit() {
-  // 物理重命名将在下一轮实现，本轮先关闭编辑态
-  editing.value = false;
+  if (committing) return;
+  committing = true;
+  try {
+    const trimmed = nameDraft.value.trim();
+    if (!trimmed || trimmed === props.project.name) {
+      editing.value = false;
+      return;
+    }
+    await renameProject(props.project.id, trimmed);
+    message.success("重命名成功");
+    editing.value = false;
+    emit("refresh");
+  } catch (e) {
+    message.error(String(e));
+    // 失败保持编辑态方便修改，或回退
+    nameDraft.value = props.project.name;
+    editing.value = false;
+  } finally {
+    committing = false;
+  }
 }
 
 async function run(kind: OpenKind) {
@@ -48,7 +82,7 @@ async function run(kind: OpenKind) {
     emit("refresh");
   } catch (e) {
     message.error(String(e));
-    emit("refresh"); // 失败也要刷新（last_accessed 已更新）
+    emit("refresh");
   }
 }
 
@@ -89,6 +123,52 @@ function confirmRemove() {
     },
   });
 }
+
+function duplicate() {
+  if (props.invalid) return;
+  emit("duplicate", props.project.id);
+}
+
+// ---------- 红点下拉：cbp / dcf ----------
+const cbpOptions = computed(() =>
+  props.project.cbp_files.map((p) => ({
+    label: fileNameOf(p),
+    key: p,
+  })),
+);
+const dcfOptions = computed(() =>
+  props.project.dcf_files.map((p) => ({
+    label: fileNameOf(p),
+    key: p,
+  })),
+);
+const hasMultiCbp = computed(() => props.project.cbp_files.length > 1);
+const hasMultiDcf = computed(() => props.project.dcf_files.length > 1);
+
+function fileNameOf(p: string) {
+  const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
+  return idx >= 0 ? p.slice(idx + 1) : p;
+}
+
+async function onSelectCbp(path: string) {
+  try {
+    await selectCbp(props.project.id, path);
+    message.success(`已选择：${fileNameOf(path)}`);
+    emit("refresh");
+  } catch (e) {
+    message.error(String(e));
+  }
+}
+
+async function onSelectDcf(path: string) {
+  try {
+    await selectDcf(props.project.id, path);
+    message.success(`已选择：${fileNameOf(path)}`);
+    emit("refresh");
+  } catch (e) {
+    message.error(String(e));
+  }
+}
 </script>
 
 <template>
@@ -107,7 +187,7 @@ function confirmRemove() {
         class="name"
         :class="{ 'name-invalid': invalid }"
         @dblclick="startEdit"
-        :title="project.path"
+        :title="`双击重命名 · ${project.path}`"
       >
         {{ project.name }}
       </span>
@@ -123,13 +203,98 @@ function confirmRemove() {
       <NTag v-if="invalid" size="small" type="warning">路径失效</NTag>
     </div>
 
-    <NSpace :size="4">
-      <NButton size="small" :disabled="invalid" title="打开文件夹" @click="run('folder')">📁</NButton>
-      <NButton size="small" :disabled="invalid" title="VSCode 打开" @click="run('vscode')">✍️</NButton>
-      <NButton size="small" :disabled="invalid" title="CodeBlocks 打开" @click="run('codeblocks')">🔧</NButton>
-      <NButton size="small" :disabled="invalid" title="烧录工具" @click="run('burn')">🔥</NButton>
-      <NButton size="small" title="复制副本（待实现）" disabled>📋</NButton>
-      <NButton size="small" :disabled="invalid" title="重扫" @click="rescan">🔄</NButton>
+    <NSpace :size="4" :wrap="false">
+      <NButton
+        size="small"
+        :disabled="invalid"
+        title="打开文件夹"
+        @click="run('folder')"
+      >
+        📁
+      </NButton>
+      <NButton
+        size="small"
+        :disabled="invalid"
+        title="VSCode 打开"
+        @click="run('vscode')"
+      >
+        ✍️
+      </NButton>
+
+      <!-- CodeBlocks + 红点下拉 -->
+      <NBadge dot :show="hasMultiCbp" processing>
+        <template v-if="hasMultiCbp">
+          <NDropdown
+            trigger="click"
+            :options="cbpOptions"
+            @select="onSelectCbp"
+          >
+            <NButton
+              size="small"
+              :disabled="invalid"
+              title="CodeBlocks 打开（多个 .cbp，点开选择）"
+            >
+              🔧
+            </NButton>
+          </NDropdown>
+        </template>
+        <template v-else>
+          <NButton
+            size="small"
+            :disabled="invalid"
+            title="CodeBlocks 打开"
+            @click="run('codeblocks')"
+          >
+            🔧
+          </NButton>
+        </template>
+      </NBadge>
+
+      <!-- 烧录 + 红点下拉 -->
+      <NBadge dot :show="hasMultiDcf" processing>
+        <template v-if="hasMultiDcf">
+          <NDropdown
+            trigger="click"
+            :options="dcfOptions"
+            @select="onSelectDcf"
+          >
+            <NButton
+              size="small"
+              :disabled="invalid"
+              title="烧录工具（多个 .dcf，点开选择）"
+            >
+              🔥
+            </NButton>
+          </NDropdown>
+        </template>
+        <template v-else>
+          <NButton
+            size="small"
+            :disabled="invalid"
+            title="烧录工具"
+            @click="run('burn')"
+          >
+            🔥
+          </NButton>
+        </template>
+      </NBadge>
+
+      <NButton
+        size="small"
+        :disabled="invalid"
+        title="复制副本"
+        @click="duplicate"
+      >
+        📋
+      </NButton>
+      <NButton
+        size="small"
+        :disabled="invalid"
+        title="重扫"
+        @click="rescan"
+      >
+        🔄
+      </NButton>
       <NButton size="small" title="移除" @click="confirmRemove">🗑️</NButton>
     </NSpace>
   </div>

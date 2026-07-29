@@ -1,16 +1,29 @@
 <script setup lang="ts">
-// 项目卡片列表（骨架版本，接入后端 list_projects）
-import { computed, onMounted, ref } from "vue";
-import { NEmpty, NSpin } from "naive-ui";
-import { checkProjects, listProjects } from "../api";
+// 项目卡片列表
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { NEmpty, NSpin, useMessage } from "naive-ui";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import {
+  addProject,
+  checkProjects,
+  duplicateProject,
+  listProjects,
+} from "../api";
 import type { Project } from "../types";
 import ProjectCard from "./ProjectCard.vue";
 
 const props = defineProps<{ search: string }>();
 
+const message = useMessage();
 const projects = ref<Project[]>([]);
 const invalidIds = ref<Set<string>>(new Set());
 const loading = ref(false);
+
+/** 复制副本遮罩状态 */
+const duplicating = ref(false);
+const duplicatingHint = ref("");
+/** 拖拽反馈：悬浮时高亮 */
+const dragHover = ref(false);
 
 async function refresh() {
   loading.value = true;
@@ -28,9 +41,50 @@ async function refresh() {
   }
 }
 
-onMounted(refresh);
+let unlisten: (() => void) | null = null;
 
-// 排序 + 搜索过滤
+onMounted(async () => {
+  await refresh();
+  try {
+    const webview = getCurrentWebview();
+    unlisten = await webview.onDragDropEvent(async (event) => {
+      const t = event.payload.type;
+      if (t === "over" || t === "enter") {
+        dragHover.value = true;
+      } else if (t === "leave") {
+        dragHover.value = false;
+      } else if (t === "drop") {
+        dragHover.value = false;
+        const paths = (event.payload as any).paths ?? [];
+        if (!paths.length) return;
+        let ok = 0;
+        let fail = 0;
+        for (const p of paths) {
+          try {
+            await addProject(p);
+            ok++;
+          } catch (e) {
+            fail++;
+            message.error(`添加失败：${String(e)}`);
+          }
+        }
+        if (ok > 0) {
+          message.success(
+            `已添加 ${ok} 个项目${fail ? `（失败 ${fail}）` : ""}`,
+          );
+          await refresh();
+        }
+      }
+    });
+  } catch (e) {
+    console.warn("drag-drop listener failed", e);
+  }
+});
+
+onUnmounted(() => {
+  unlisten?.();
+});
+
 const visibleProjects = computed(() => {
   const kw = props.search.trim().toLowerCase();
   const filtered = kw
@@ -44,15 +98,34 @@ const visibleProjects = computed(() => {
   return filtered;
 });
 
+async function onDuplicate(id: string) {
+  if (duplicating.value) return;
+  duplicating.value = true;
+  const target = projects.value.find((p) => p.id === id);
+  duplicatingHint.value = target
+    ? `正在复制『${target.name}』，请稍候…`
+    : "正在复制文件，请稍候…";
+  try {
+    const proj = await duplicateProject(id);
+    message.success(`复制成功，已添加项目：${proj.name}`);
+    await refresh();
+  } catch (e) {
+    message.error(String(e));
+  } finally {
+    duplicating.value = false;
+    duplicatingHint.value = "";
+  }
+}
+
 defineExpose({ refresh });
 </script>
 
 <template>
-  <div class="project-list">
+  <div class="project-list" :class="{ 'drag-hover': dragHover }">
     <NSpin v-if="loading" size="small" />
     <NEmpty
       v-else-if="!visibleProjects.length"
-      description="暂无项目，点击右下角『＋』添加"
+      description="暂无项目，点击右下角『＋』或拖拽文件夹添加"
     />
     <template v-else>
       <ProjectCard
@@ -61,8 +134,23 @@ defineExpose({ refresh });
         :project="p"
         :invalid="invalidIds.has(p.id)"
         @refresh="refresh"
+        @duplicate="onDuplicate"
       />
     </template>
+
+    <!-- 拖拽悬浮时的浮层提示 -->
+    <div v-if="dragHover" class="drop-hint">
+      <div class="drop-hint-inner">📥 松开鼠标即可添加为项目</div>
+    </div>
+
+    <!-- 全屏遮罩：复制副本进行中 -->
+    <div v-if="duplicating" class="mask">
+      <div class="mask-inner">
+        <NSpin size="large" />
+        <div class="mask-text">{{ duplicatingHint }}</div>
+        <div class="mask-hint">最多等待 120 秒</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -72,5 +160,57 @@ defineExpose({ refresh });
   flex-direction: column;
   gap: 8px;
   padding-bottom: 72px;
+  position: relative;
+}
+.project-list.drag-hover {
+  outline: 2px dashed #2f80ed;
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+.drop-hint {
+  position: fixed;
+  inset: 48px 12px 12px 12px;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.drop-hint-inner {
+  padding: 12px 24px;
+  background: rgba(47, 128, 237, 0.9);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  pointer-events: all;
+}
+.mask-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 32px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.mask-text {
+  font-size: 14px;
+  color: #374151;
+}
+.mask-hint {
+  font-size: 12px;
+  color: #9ca3af;
 }
 </style>

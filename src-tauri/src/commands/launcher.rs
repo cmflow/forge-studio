@@ -1,4 +1,7 @@
-// launchers.json：快捷应用列表（占位实现，仅落地基础 CRUD）
+// launchers.json：快捷应用列表
+use std::path::Path;
+use std::process::Command;
+
 use uuid::Uuid;
 
 use crate::commands::logger::log_line;
@@ -20,10 +23,22 @@ pub fn list_launchers() -> Result<Vec<Launcher>, String> {
 
 #[tauri::command]
 pub fn add_launcher(name: String, path: String) -> Result<Launcher, String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err("路径不存在".into());
+    }
     let mut list = load_all()?;
+    let final_name = if name.trim().is_empty() {
+        p.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("App")
+            .to_string()
+    } else {
+        name.trim().to_string()
+    };
     let item = Launcher {
         id: Uuid::new_v4().to_string(),
-        name,
+        name: final_name,
         path,
         starred: false,
     };
@@ -53,8 +68,29 @@ pub fn toggle_launcher_star(id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn run_launcher(id: String) -> Result<(), String> {
     let list = load_all()?;
-    let item = list.iter().find(|l| l.id == id).ok_or("启动器不存在")?;
-    // TODO: 使用 tauri_plugin_shell 打开；此处先记录日志占位
-    let _ = log_line(&format!("run_launcher name={} path={}", item.name, item.path));
-    Ok(())
+    let item = list
+        .iter()
+        .find(|l| l.id == id)
+        .cloned()
+        .ok_or("启动器不存在")?;
+
+    let result: Result<(), String> = (|| {
+        if !Path::new(&item.path).exists() {
+            return Err(format!("目标不存在: {}", item.path));
+        }
+        Command::new(&item.path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })();
+
+    let status = match &result {
+        Ok(_) => "OK".to_string(),
+        Err(e) => format!("FAIL: {}", e),
+    };
+    let _ = log_line(&format!(
+        "run_launcher name=\"{}\" path=\"{}\" result={}",
+        item.name, item.path, status
+    ));
+    result
 }
