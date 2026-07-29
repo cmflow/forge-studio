@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 设置弹窗（骨架版）
+// 设置弹窗
 import { ref, watch } from "vue";
 import {
   NButton,
@@ -10,6 +10,7 @@ import {
   useDialog,
   useMessage,
 } from "naive-ui";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { clearAllData, loadConfig, openLogsDir, saveConfig } from "../api";
 import type { AppConfig } from "../types";
 
@@ -32,11 +33,27 @@ watch(
       try {
         cfg.value = await loadConfig();
       } catch (e) {
-        // 首次运行或后端未就绪
+        // 首次运行时忽略
       }
     }
   },
 );
+
+async function pickExe(field: keyof AppConfig, title: string) {
+  try {
+    const picked = await openDialog({
+      title,
+      multiple: false,
+      directory: false,
+      filters: [{ name: "可执行文件", extensions: ["exe"] }],
+    });
+    if (typeof picked === "string" && picked) {
+      cfg.value[field] = picked;
+    }
+  } catch (e) {
+    message.error(String(e));
+  }
+}
 
 async function save() {
   try {
@@ -48,7 +65,7 @@ async function save() {
   }
 }
 
-async function pickLogs() {
+async function openLogs() {
   try {
     await openLogsDir();
   } catch (e) {
@@ -59,13 +76,14 @@ async function pickLogs() {
 function confirmClear() {
   dialog.warning({
     title: "确认清空所有数据？",
-    content: "该操作将删除 config.json / launchers.json / projects.json，不可撤销。",
+    content:
+      "该操作将删除 config.json / launchers.json / projects.json，不可撤销。",
     positiveText: "清空",
     negativeText: "取消",
     onPositiveClick: async () => {
       try {
         await clearAllData();
-        message.success("已清空，界面将刷新");
+        message.success("已清空，请重启软件或手动刷新");
         emit("update:visible", false);
       } catch (e) {
         message.error(String(e));
@@ -80,7 +98,7 @@ function confirmClear() {
     :show="visible"
     preset="card"
     title="设置"
-    style="width: 560px"
+    style="width: 620px"
     @update:show="(v) => emit('update:visible', v)"
   >
     <NSpace vertical :size="12">
@@ -88,29 +106,43 @@ function confirmClear() {
         <div class="label">VSCode 路径</div>
         <NInputGroup>
           <NInput v-model:value="cfg.vscode_path" placeholder="Code.exe 完整路径" />
-          <NButton disabled>浏览…</NButton>
+          <NButton @click="pickExe('vscode_path', '选择 VSCode 可执行文件')">
+            浏览…
+          </NButton>
         </NInputGroup>
       </div>
 
       <div>
         <div class="label">CodeBlocks 路径</div>
         <NInputGroup>
-          <NInput v-model:value="cfg.codeblocks_path" placeholder="codeblocks.exe 完整路径" />
-          <NButton disabled>浏览…</NButton>
+          <NInput
+            v-model:value="cfg.codeblocks_path"
+            placeholder="codeblocks.exe 完整路径"
+          />
+          <NButton
+            @click="pickExe('codeblocks_path', '选择 CodeBlocks 可执行文件')"
+          >
+            浏览…
+          </NButton>
         </NInputGroup>
       </div>
 
       <div>
         <div class="label">烧录工具路径</div>
         <NInputGroup>
-          <NInput v-model:value="cfg.burn_tool_path" placeholder="BurnTool.exe 完整路径" />
-          <NButton disabled>浏览…</NButton>
+          <NInput
+            v-model:value="cfg.burn_tool_path"
+            placeholder="BurnTool.exe 完整路径"
+          />
+          <NButton @click="pickExe('burn_tool_path', '选择烧录工具')">
+            浏览…
+          </NButton>
         </NInputGroup>
       </div>
 
       <NSpace justify="space-between">
         <NSpace>
-          <NButton @click="pickLogs">打开日志目录</NButton>
+          <NButton @click="openLogs">打开日志目录</NButton>
           <NButton type="error" ghost @click="confirmClear">清空所有数据</NButton>
         </NSpace>
         <NSpace>

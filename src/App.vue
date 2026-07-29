@@ -19,8 +19,13 @@ import AddProjectButton from "./components/AddProjectButton.vue";
 
 const search = ref("");
 const showSettings = ref(false);
+const projectListRef = ref<InstanceType<typeof ProjectList> | null>(null);
 
-// 亮色主题（按需求：不做暗色）
+function refreshProjects() {
+  projectListRef.value?.refresh();
+}
+
+// 亮色主题
 const theme = null;
 </script>
 
@@ -37,10 +42,8 @@ const theme = null;
           </NLayoutHeader>
 
           <NLayoutContent class="app-content" content-style="padding: 12px;">
-            <!-- 快捷应用区 -->
             <LauncherBar />
 
-            <!-- 搜索框 -->
             <div class="search-row">
               <NInput
                 v-model:value="search"
@@ -49,15 +52,12 @@ const theme = null;
               />
             </div>
 
-            <!-- 项目卡片列表 -->
-            <ProjectList :search="search" />
+            <ProjectList ref="projectListRef" :search="search" />
 
-            <!-- 悬浮添加项目按钮 -->
-            <AddProjectButton />
+            <AddProjectButton @added="refreshProjects" />
           </NLayoutContent>
         </NLayout>
 
-        <!-- 设置弹窗 -->
         <SettingsDialog v-model:visible="showSettings" />
       </NDialogProvider>
     </NMessageProvider>

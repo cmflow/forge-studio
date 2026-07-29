@@ -231,4 +231,5 @@ npm run tauri build  # 打包便携 exe（输出在 src-tauri/target/release/）
 
 ## 十一、更新日志
 
-- `2026-07-30`：初始化项目骨架，编写 README、Tauri v2 + Vue 3 + TS + Naive UI 脚手架、Rust Commands 占位。
+- `2026-07-30 (2)`：第一步功能落地。设置面板三个 exe 路径的浏览、`+` 添加项目、四大打开操作（Folder / VSCode / CodeBlocks / Burn）、重扫、移除项目、星标切换、路径失效灰显、`last_accessed` 自动刷新，全部真实生效并写入日志。物理重命名 & 复制副本仍留待第二步。
+- `2026-07-30 (1)`：初始化项目骨架，编写 README、Tauri v2 + Vue 3 + TS + Naive UI 脚手架、Rust Commands 占位。

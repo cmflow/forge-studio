@@ -1,16 +1,24 @@
 <script setup lang="ts">
-// 单个项目卡片（骨架版：展示 + 操作按钮占位）
+// 单个项目卡片：操作按钮全部接线
 import { ref } from "vue";
-import { NButton, NSpace, NTag } from "naive-ui";
-import type { Project } from "../types";
+import { NButton, NSpace, NTag, useDialog, useMessage } from "naive-ui";
+import type { OpenKind, Project } from "../types";
+import {
+  openTarget,
+  removeProject,
+  scanProject,
+  toggleProjectStar,
+} from "../api";
 
 const props = defineProps<{ project: Project; invalid: boolean }>();
 const emit = defineEmits<{ (e: "refresh"): void }>();
 
+const message = useMessage();
+const dialog = useDialog();
+
 const editing = ref(false);
 const nameDraft = ref(props.project.name);
 
-// 双击进入编辑时自动全选（script setup 中以 v 前缀导出即为局部指令）
 const vFocusSelect = {
   mounted(el: HTMLInputElement) {
     el.focus();
@@ -29,15 +37,71 @@ function cancelEdit() {
 }
 
 async function commitEdit() {
-  // 后续接入 renameProject
+  // 物理重命名将在下一轮实现，本轮先关闭编辑态
   editing.value = false;
+}
+
+async function run(kind: OpenKind) {
+  if (props.invalid) return;
+  try {
+    await openTarget(kind, props.project.id);
+    emit("refresh");
+  } catch (e) {
+    message.error(String(e));
+    emit("refresh"); // 失败也要刷新（last_accessed 已更新）
+  }
+}
+
+async function rescan() {
+  if (props.invalid) return;
+  try {
+    await scanProject(props.project.id);
+    message.success("扫描完成");
+    emit("refresh");
+  } catch (e) {
+    message.error(String(e));
+  }
+}
+
+async function toggleStar() {
+  try {
+    await toggleProjectStar(props.project.id);
+    emit("refresh");
+  } catch (e) {
+    message.error(String(e));
+  }
+}
+
+function confirmRemove() {
+  dialog.warning({
+    title: "移除该项目？",
+    content: `将从列表中移除『${props.project.name}』（不会删除硬盘上的文件夹）。`,
+    positiveText: "移除",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        await removeProject(props.project.id);
+        message.success("已移除");
+        emit("refresh");
+      } catch (e) {
+        message.error(String(e));
+      }
+    },
+  });
 }
 </script>
 
 <template>
   <div class="card" :class="{ invalid }">
     <div class="left">
-      <span v-if="project.starred" class="star">⭐</span>
+      <span
+        class="star"
+        :class="{ starred: project.starred }"
+        @click="toggleStar"
+        title="星标"
+      >
+        {{ project.starred ? "⭐" : "☆" }}
+      </span>
       <span
         v-if="!editing"
         class="name"
@@ -60,12 +124,13 @@ async function commitEdit() {
     </div>
 
     <NSpace :size="4">
-      <NButton size="small" :disabled="invalid" title="打开文件夹">📁</NButton>
-      <NButton size="small" :disabled="invalid" title="VSCode 打开">✍️</NButton>
-      <NButton size="small" :disabled="invalid" title="CodeBlocks 打开">🔧</NButton>
-      <NButton size="small" :disabled="invalid" title="烧录工具">🔥</NButton>
-      <NButton size="small" :disabled="invalid" title="复制副本">📋</NButton>
-      <NButton size="small" :disabled="invalid" title="重扫">🔄</NButton>
+      <NButton size="small" :disabled="invalid" title="打开文件夹" @click="run('folder')">📁</NButton>
+      <NButton size="small" :disabled="invalid" title="VSCode 打开" @click="run('vscode')">✍️</NButton>
+      <NButton size="small" :disabled="invalid" title="CodeBlocks 打开" @click="run('codeblocks')">🔧</NButton>
+      <NButton size="small" :disabled="invalid" title="烧录工具" @click="run('burn')">🔥</NButton>
+      <NButton size="small" title="复制副本（待实现）" disabled>📋</NButton>
+      <NButton size="small" :disabled="invalid" title="重扫" @click="rescan">🔄</NButton>
+      <NButton size="small" title="移除" @click="confirmRemove">🗑️</NButton>
     </NSpace>
   </div>
 </template>
@@ -96,6 +161,12 @@ async function commitEdit() {
   flex: 1;
 }
 .star {
+  cursor: pointer;
+  color: #d1d5db;
+  user-select: none;
+  transition: color 0.15s;
+}
+.star.starred {
   color: #f5a524;
 }
 .name {
