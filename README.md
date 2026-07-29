@@ -7,11 +7,40 @@
 
 ## 一、项目状态
 
-- 阶段：**框架雏形搭建中**
-- 版本：`0.1.0-alpha`
+- 阶段：**核心功能全部落地，可日常使用**
+- 版本：`0.1.0`
 - 更新日期：2026-07-30
 
 后续每次功能落地或结构调整，都会同步更新本 README。
+
+### 功能清单（已实现 ✅）
+
+**项目管理**
+- ✅ 添加项目：右下角 ＋ 选择文件夹 · 拖拽文件夹到窗口批量添加
+- ✅ 智能扫描：递归遍历（限 1000 文件）自动识别 `.cbp` / `.dcf`
+- ✅ 双击项目名物理重命名：非法字符校验 + 冲突检测 + `std::fs::rename` + 清缓存 + 重扫
+- ✅ 一键打开：文件夹 / VSCode / CodeBlocks / 烧录工具
+- ✅ 多 `.cbp` / `.dcf` 时按钮红点 + 下拉选择 + 立即持久化
+- ✅ 复制副本：`spawn_blocking + timeout(120s)` + 全屏遮罩 + `_copy_N` 命名 + 自动加为新项目
+- ✅ 重扫（清空 `selected_*`）· 移除项目（二次确认）· 星标切换
+- ✅ 路径失效：启动/刷新时批量检测，失效项灰色斜体 + `[路径失效]` 标签 + 按钮禁用
+- ✅ 搜索：实时不区分大小写过滤
+- ✅ 排序：星标置顶 → `last_accessed` 降序，操作后自动前移
+
+**快捷应用**
+- ✅ ＋ 添加应用（`.exe/.bat/.cmd/.lnk`）
+- ✅ 左键启动 · 右键菜单（星标 / 移除）
+- ✅ 星标置顶
+
+**设置面板**
+- ✅ VSCode / CodeBlocks / 烧录工具三条路径均可"浏览…"文件选择框
+- ✅ 打开日志目录（explorer）
+- ✅ 清空所有数据（二次确认）
+
+**日志与容错**
+- ✅ 每次打开操作按日期切割写入 `Data/logs/YYYY-MM-DD.log`：`[时间] operation project="…" kind=… result=OK/FAIL: …`
+- ✅ 所有失败通过 Naive UI Toast 提示，不闪退不卡死
+- ✅ 复制副本按钮防连点
 
 ---
 
@@ -208,7 +237,7 @@ forge-studio/
 ### 环境要求
 
 - Node.js ≥ 18
-- Rust ≥ 1.77（`rustup default stable`）
+- Rust ≥ 1.77（`rustup default stable`，实测 1.97 通过）
 - Windows：需要 [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) 和 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)
 - Tauri CLI：随 `npm i` 一起装到 devDependencies，无需全局安装
 
@@ -231,6 +260,7 @@ npm run tauri build  # 打包便携 exe（输出在 src-tauri/target/release/）
 
 ## 十一、更新日志
 
+- `2026-07-30 (4)`：README 全面刷新——同步"已实现功能清单"、把项目状态升级为 `0.1.0` 可用版、修正环境要求（补充实测 Rust 1.97 通过）。
 - `2026-07-30 (3)`：第二步功能落地。
   - **物理重命名**：双击项目名 → 校验非法字符 → 冲突检测 → `std::fs::rename` → 清缓存 → 自动重扫。
   - **复制副本**：`tokio::spawn_blocking + timeout(120s)` + 前端全屏遮罩 + 按钮防连点 + `_copy_N` 自动命名 + 自动加为新项目。
