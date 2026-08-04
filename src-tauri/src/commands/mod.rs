@@ -1,5 +1,6 @@
 // Command 模块入口
 pub mod config;
+pub mod icon;
 pub mod launcher;
 pub mod logger;
 pub mod misc;

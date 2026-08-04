@@ -15,6 +15,7 @@ import {
   openTarget,
   removeProject,
   renameProject,
+  revealInExplorer,
   scanProject,
   selectCbp,
   selectDcf,
@@ -130,20 +131,67 @@ function duplicate() {
 }
 
 // ---------- 红点下拉：cbp / dcf ----------
+const REVEAL_KEY = "__reveal_dcf__";
+
+/** 当前生效的 cbp / dcf（未显式选择时取第一个，与后端 open 逻辑一致） */
+const currentCbp = computed(
+  () => props.project.selected_cbp ?? props.project.cbp_files[0] ?? null,
+);
+const currentDcf = computed(
+  () => props.project.selected_dcf ?? props.project.dcf_files[0] ?? null,
+);
+
 const cbpOptions = computed(() =>
   props.project.cbp_files.map((p) => ({
-    label: fileNameOf(p),
+    label: `${p === currentCbp.value ? "✔ " : "　"}${fileNameOf(p)}`,
     key: p,
   })),
 );
-const dcfOptions = computed(() =>
-  props.project.dcf_files.map((p) => ({
-    label: fileNameOf(p),
-    key: p,
-  })),
-);
+/**
+ * dcf 右键菜单：
+ * - 顶部固定一条"在资源管理器中定位"（针对当前 selected_dcf）
+ * - 有多个 dcf 时，下面列出所有 dcf 供切换，当前项前面带 ✔
+ */
+const dcfOptions = computed(() => {
+  const items: any[] = [];
+  const cur = currentDcf.value;
+  if (cur) {
+    items.push({
+      key: REVEAL_KEY,
+      label: `📂 在资源管理器中定位 · ${fileNameOf(cur)}`,
+    });
+  }
+  if (props.project.dcf_files.length > 1) {
+    items.push({ type: "divider", key: "__div__" });
+    for (const p of props.project.dcf_files) {
+      items.push({
+        label: `${p === cur ? "✔ " : "　"}${fileNameOf(p)}`,
+        key: p,
+      });
+    }
+  }
+  return items;
+});
 const hasMultiCbp = computed(() => props.project.cbp_files.length > 1);
+/** 有 dcf 就允许右键（哪怕只有 1 个，也可以定位） */
+const hasDcf = computed(() => props.project.dcf_files.length > 0);
 const hasMultiDcf = computed(() => props.project.dcf_files.length > 1);
+
+/** 悬浮提示里直接显示当前生效的文件名，不用右键也能确认用的是哪一个 */
+const cbpTitle = computed(() => {
+  if (!currentCbp.value) return "CodeBlocks 打开（未找到 .cbp）";
+  const base = `当前：${fileNameOf(currentCbp.value)}`;
+  return hasMultiCbp.value
+    ? `${base}\n共 ${props.project.cbp_files.length} 个 · 左键打开 · 右键切换`
+    : `${base}\n左键打开`;
+});
+const dcfTitle = computed(() => {
+  if (!currentDcf.value) return "烧录工具（未找到 .dcf）";
+  const base = `当前：${fileNameOf(currentDcf.value)}`;
+  return hasMultiDcf.value
+    ? `${base}\n共 ${props.project.dcf_files.length} 个 · 左键打开 · 右键切换/定位`
+    : `${base}\n左键打开 · 右键定位`;
+});
 
 function fileNameOf(p: string) {
   const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
@@ -151,6 +199,7 @@ function fileNameOf(p: string) {
 }
 
 async function onSelectCbp(path: string) {
+  cbpMenuShow.value = false;
   try {
     await selectCbp(props.project.id, path);
     message.success(`已选择：${fileNameOf(path)}`);
@@ -160,14 +209,53 @@ async function onSelectCbp(path: string) {
   }
 }
 
-async function onSelectDcf(path: string) {
+async function onSelectDcf(key: string) {
+  dcfMenuShow.value = false;
+  // 特殊键：定位当前 dcf 到资源管理器
+  if (key === REVEAL_KEY) {
+    const target = currentDcf.value;
+    if (!target) return;
+    try {
+      await revealInExplorer(target);
+    } catch (e) {
+      message.error(String(e));
+    }
+    return;
+  }
+  // 否则视为选择新的 dcf
   try {
-    await selectDcf(props.project.id, path);
-    message.success(`已选择：${fileNameOf(path)}`);
+    await selectDcf(props.project.id, key);
+    message.success(`已选择：${fileNameOf(key)}`);
     emit("refresh");
   } catch (e) {
     message.error(String(e));
   }
+}
+
+// ---- 右键弹选择菜单（cbp/dcf 各一份） ----
+const cbpMenuShow = ref(false);
+const cbpMenuX = ref(0);
+const cbpMenuY = ref(0);
+const dcfMenuShow = ref(false);
+const dcfMenuX = ref(0);
+const dcfMenuY = ref(0);
+
+function onContextCbp(e: MouseEvent) {
+  if (props.invalid || !hasMultiCbp.value) return;
+  e.preventDefault();
+  cbpMenuX.value = e.clientX;
+  cbpMenuY.value = e.clientY;
+  cbpMenuShow.value = false;
+  requestAnimationFrame(() => (cbpMenuShow.value = true));
+}
+
+function onContextDcf(e: MouseEvent) {
+  if (props.invalid || !hasDcf.value) return;
+  e.preventDefault();
+  dcfMenuX.value = e.clientX;
+  dcfMenuY.value = e.clientY;
+  dcfMenuShow.value = false;
+  requestAnimationFrame(() => (dcfMenuShow.value = true));
 }
 </script>
 
@@ -215,68 +303,36 @@ async function onSelectDcf(path: string) {
       <NButton
         size="small"
         :disabled="invalid"
-        title="VSCode 打开"
+        title="用默认 IDE 打开（VSCode / Trae，可在设置切换）"
         @click="run('vscode')"
       >
-        ✍️
+        💻
       </NButton>
 
-      <!-- CodeBlocks + 红点下拉 -->
-      <NBadge dot :show="hasMultiCbp" processing>
-        <template v-if="hasMultiCbp">
-          <NDropdown
-            trigger="click"
-            :options="cbpOptions"
-            @select="onSelectCbp"
-          >
-            <NButton
-              size="small"
-              :disabled="invalid"
-              title="CodeBlocks 打开（多个 .cbp，点开选择）"
-            >
-              🔧
-            </NButton>
-          </NDropdown>
-        </template>
-        <template v-else>
-          <NButton
-            size="small"
-            :disabled="invalid"
-            title="CodeBlocks 打开"
-            @click="run('codeblocks')"
-          >
-            🔧
-          </NButton>
-        </template>
+      <!-- CodeBlocks + 红点（静态） · 左键直接打开 · 右键选择 -->
+      <NBadge dot :show="hasMultiCbp" :processing="false" color="#d03050">
+        <NButton
+          size="small"
+          :disabled="invalid"
+          :title="cbpTitle"
+          @click="run('codeblocks')"
+          @contextmenu="onContextCbp"
+        >
+          🔧
+        </NButton>
       </NBadge>
 
-      <!-- 烧录 + 红点下拉 -->
-      <NBadge dot :show="hasMultiDcf" processing>
-        <template v-if="hasMultiDcf">
-          <NDropdown
-            trigger="click"
-            :options="dcfOptions"
-            @select="onSelectDcf"
-          >
-            <NButton
-              size="small"
-              :disabled="invalid"
-              title="烧录工具（多个 .dcf，点开选择）"
-            >
-              🔥
-            </NButton>
-          </NDropdown>
-        </template>
-        <template v-else>
-          <NButton
-            size="small"
-            :disabled="invalid"
-            title="烧录工具"
-            @click="run('burn')"
-          >
-            🔥
-          </NButton>
-        </template>
+      <!-- 烧录 + 红点（静态） · 左键直接打开 · 右键选择/定位 -->
+      <NBadge dot :show="hasMultiDcf" :processing="false" color="#d03050">
+        <NButton
+          size="small"
+          :disabled="invalid"
+          :title="dcfTitle"
+          @click="run('burn')"
+          @contextmenu="onContextDcf"
+        >
+          🔥
+        </NButton>
       </NBadge>
 
       <NButton
@@ -297,6 +353,28 @@ async function onSelectDcf(path: string) {
       </NButton>
       <NButton size="small" title="移除" @click="confirmRemove">🗑️</NButton>
     </NSpace>
+
+    <!-- 手动定位的右键菜单：cbp / dcf -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="cbpMenuX"
+      :y="cbpMenuY"
+      :options="cbpOptions"
+      :show="cbpMenuShow"
+      @select="onSelectCbp"
+      @clickoutside="cbpMenuShow = false"
+    />
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="dcfMenuX"
+      :y="dcfMenuY"
+      :options="dcfOptions"
+      :show="dcfMenuShow"
+      @select="onSelectDcf"
+      @clickoutside="dcfMenuShow = false"
+    />
   </div>
 </template>
 

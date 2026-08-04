@@ -9,6 +9,17 @@ pub struct AppConfig {
     pub codeblocks_path: String,
     #[serde(default)]
     pub burn_tool_path: String,
+    #[serde(default)]
+    pub trae_path: String,
+    /// 默认 IDE："vscode" | "trae"，为空时按 vscode 处理
+    #[serde(default)]
+    pub default_ide: String,
+    /// 自动扫描工具的根目录
+    #[serde(default)]
+    pub dev_utils_root: String,
+    /// 启动应用时自动扫描 dev_utils_root
+    #[serde(default)]
+    pub scan_dev_utils_on_start: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,15 +1,24 @@
-// 便携存储：所有 JSON 都放在 .exe 同级 Data/ 目录下
+// 便携存储：所有 JSON 都放在 %USERPROFILE%\.forge-studio\ 目录下
+// 这样无论是 dev (target\debug\...) 还是 release (target\release\...)，甚至拷贝到别处，
+// 共享同一份用户数据。目录在用户主目录下"用户级"固定，不污染系统。
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-/// 获取 Data 目录（.exe 同级 / 开发期为 target/debug 同级）
+/// 获取 Data 目录（%USERPROFILE%/.forge-studio/，开发/release 共享）
 pub fn data_dir() -> PathBuf {
-    let exe = std::env::current_exe().expect("current_exe failed");
-    let base = exe.parent().expect("exe parent missing").to_path_buf();
-    let dir = base.join("Data");
+    // 优先读 USERPROFILE；PowerShell / 普通登录都有这个变量
+    let home = std::env::var("USERPROFILE")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| {
+            // 兜底：HOME（极少数情况，比如 service 账户）
+            std::env::var("HOME").ok().map(PathBuf::from)
+        })
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let dir = home.join(".forge-studio");
     if !dir.exists() {
         let _ = std::fs::create_dir_all(&dir);
     }

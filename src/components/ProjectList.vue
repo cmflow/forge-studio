@@ -1,8 +1,7 @@
 <script setup lang="ts">
 // 项目卡片列表
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { NEmpty, NSpin, useMessage } from "naive-ui";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   addProject,
   checkProjects,
@@ -12,24 +11,25 @@ import {
 import type { Project } from "../types";
 import ProjectCard from "./ProjectCard.vue";
 
-const props = defineProps<{ search: string }>();
+const props = defineProps<{ search: string; dragHover?: boolean }>();
 
 const message = useMessage();
 const projects = ref<Project[]>([]);
 const invalidIds = ref<Set<string>>(new Set());
-const loading = ref(false);
+/** 仅首次加载时展示骨架/加载态，后续刷新静默进行，避免列表整体闪烁 */
+const firstLoading = ref(true);
 
 /** 复制副本遮罩状态 */
 const duplicating = ref(false);
 const duplicatingHint = ref("");
-/** 拖拽反馈：悬浮时高亮 */
-const dragHover = ref(false);
 
 async function refresh() {
-  loading.value = true;
   try {
-    projects.value = await listProjects();
-    const statuses = await checkProjects();
+    const [list, statuses] = await Promise.all([
+      listProjects(),
+      checkProjects(),
+    ]);
+    projects.value = list;
     invalidIds.value = new Set(
       statuses.filter((s) => !s.exists).map((s) => s.id),
     );
@@ -37,53 +37,31 @@ async function refresh() {
     projects.value = [];
     invalidIds.value = new Set();
   } finally {
-    loading.value = false;
+    firstLoading.value = false;
   }
 }
 
-let unlisten: (() => void) | null = null;
+onMounted(refresh);
 
-onMounted(async () => {
-  await refresh();
-  try {
-    const webview = getCurrentWebview();
-    unlisten = await webview.onDragDropEvent(async (event) => {
-      const t = event.payload.type;
-      if (t === "over" || t === "enter") {
-        dragHover.value = true;
-      } else if (t === "leave") {
-        dragHover.value = false;
-      } else if (t === "drop") {
-        dragHover.value = false;
-        const paths = (event.payload as any).paths ?? [];
-        if (!paths.length) return;
-        let ok = 0;
-        let fail = 0;
-        for (const p of paths) {
-          try {
-            await addProject(p);
-            ok++;
-          } catch (e) {
-            fail++;
-            message.error(`添加失败：${String(e)}`);
-          }
-        }
-        if (ok > 0) {
-          message.success(
-            `已添加 ${ok} 个项目${fail ? `（失败 ${fail}）` : ""}`,
-          );
-          await refresh();
-        }
-      }
-    });
-  } catch (e) {
-    console.warn("drag-drop listener failed", e);
+/** 由 App.vue 派发调用：批量把拖入的文件夹加为项目 */
+async function handleDrop(paths: string[]) {
+  if (!paths?.length) return;
+  let ok = 0;
+  let fail = 0;
+  for (const p of paths) {
+    try {
+      await addProject(p);
+      ok++;
+    } catch (e) {
+      fail++;
+      message.error(`添加失败：${String(e)}`);
+    }
   }
-});
-
-onUnmounted(() => {
-  unlisten?.();
-});
+  if (ok > 0) {
+    message.success(`已添加 ${ok} 个项目${fail ? `（失败 ${fail}）` : ""}`);
+    await refresh();
+  }
+}
 
 const visibleProjects = computed(() => {
   const kw = props.search.trim().toLowerCase();
@@ -117,12 +95,12 @@ async function onDuplicate(id: string) {
   }
 }
 
-defineExpose({ refresh });
+defineExpose({ refresh, handleDrop });
 </script>
 
 <template>
   <div class="project-list" :class="{ 'drag-hover': dragHover }">
-    <NSpin v-if="loading" size="small" />
+    <NSpin v-if="firstLoading" size="small" />
     <NEmpty
       v-else-if="!visibleProjects.length"
       description="暂无项目，点击右下角『＋』或拖拽文件夹添加"
