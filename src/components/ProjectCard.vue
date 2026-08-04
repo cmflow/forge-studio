@@ -16,7 +16,6 @@ import {
   removeProject,
   renameProject,
   revealInExplorer,
-  scanProject,
   selectCbp,
   selectDcf,
   toggleProjectStar,
@@ -84,17 +83,6 @@ async function run(kind: OpenKind) {
   } catch (e) {
     message.error(String(e));
     emit("refresh");
-  }
-}
-
-async function rescan() {
-  if (props.invalid) return;
-  try {
-    await scanProject(props.project.id);
-    message.success("扫描完成");
-    emit("refresh");
-  } catch (e) {
-    message.error(String(e));
   }
 }
 
@@ -306,7 +294,7 @@ function onContextDcf(e: MouseEvent) {
         title="用默认 IDE 打开（VSCode / Trae，可在设置切换）"
         @click="run('vscode')"
       >
-        💻
+        <span class="label-text">IDE</span>
       </NButton>
 
       <!-- CodeBlocks + 红点（静态） · 左键直接打开 · 右键选择 -->
@@ -318,7 +306,7 @@ function onContextDcf(e: MouseEvent) {
           @click="run('codeblocks')"
           @contextmenu="onContextCbp"
         >
-          🔧
+          <span class="label-text">.cbp</span>
         </NButton>
       </NBadge>
 
@@ -331,7 +319,7 @@ function onContextDcf(e: MouseEvent) {
           @click="run('burn')"
           @contextmenu="onContextDcf"
         >
-          🔥
+          <span class="label-text">.dcf</span>
         </NButton>
       </NBadge>
 
@@ -341,17 +329,11 @@ function onContextDcf(e: MouseEvent) {
         title="复制副本"
         @click="duplicate"
       >
-        📋
+        <span class="label-text">copy</span>
       </NButton>
-      <NButton
-        size="small"
-        :disabled="invalid"
-        title="重扫"
-        @click="rescan"
-      >
-        🔄
+      <NButton size="small" title="移除" @click="confirmRemove">
+        <span class="remove-x">✕</span>
       </NButton>
-      <NButton size="small" title="移除" @click="confirmRemove">🗑️</NButton>
     </NSpace>
 
     <!-- 手动定位的右键菜单：cbp / dcf -->
@@ -431,5 +413,18 @@ function onContextDcf(e: MouseEvent) {
   border-radius: 4px;
   outline: none;
   width: 240px;
+}
+/* 文字型功能按钮：斜体 + 粗体，便于快速区分 */
+.label-text {
+  font-style: italic;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+/* 移除按钮的叉：略加粗，视觉上与文字按钮区分 */
+.remove-x {
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
 }
 </style>
