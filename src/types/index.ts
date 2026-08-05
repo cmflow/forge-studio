@@ -41,3 +41,49 @@ export interface ProjectStatus {
 
 /** open_target 的目标类型 */
 export type OpenKind = "folder" | "vscode" | "codeblocks" | "burn";
+
+// ---------- 云同步（坚果云 WebDAV） ----------
+
+/** 跨项目共享的 WebDAV 凭据，存在 %USERPROFILE%\.cloudsync\credential.json */
+export interface WebdavCredential {
+  server: string;
+  account: string;
+  app_password: string;
+}
+
+export interface DiagStep {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface SyncDiagnostic {
+  steps: DiagStep[];
+  ok: boolean;
+}
+
+// ---------- 事件进展模块（独立于项目管理） ----------
+
+/** 进展节点状态：待办 / 进行中 / 已完成 */
+export type StepState = "pending" | "doing" | "done";
+
+export interface ProgressStep {
+  id: string;
+  text: string;
+  state: StepState;
+  created_at: number;
+}
+
+export interface ProgressEvent {
+  id: string;
+  title: string;
+  note: string;
+  /** 分类名，空字符串表示「未分类」 */
+  category: string;
+  /** "open" 进行中 | "done" 已归档 */
+  status: string;
+  starred: boolean;
+  created_at: number;
+  updated_at: number;
+  steps: ProgressStep[];
+}

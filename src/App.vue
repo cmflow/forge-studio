@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import {
   NButton,
+  NButtonGroup,
   NConfigProvider,
   NDialogProvider,
   NInput,
@@ -16,8 +17,12 @@ import LauncherBar from "./components/LauncherBar.vue";
 import ProjectList from "./components/ProjectList.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import AddProjectButton from "./components/AddProjectButton.vue";
+import EventBoard from "./components/EventBoard.vue";
 
+/** 当前模块：workspace = 项目工作台，events = 事件进展。两者互相独立 */
+const activeModule = ref<"workspace" | "events">("workspace");
 const search = ref("");
+const eventSearch = ref("");
 const showSettings = ref(false);
 const launcherBarRef = ref<InstanceType<typeof LauncherBar> | null>(null);
 const projectListRef = ref<InstanceType<typeof ProjectList> | null>(null);
@@ -52,6 +57,8 @@ onMounted(async () => {
   try {
     const webview = getCurrentWebview();
     unlisten = await webview.onDragDropEvent(async (event) => {
+      // 事件进展模块不接收拖拽
+      if (activeModule.value !== "workspace") return;
       const t = event.payload.type;
       const anyPayload = event.payload as any;
       if (t === "enter" || t === "over") {
@@ -90,13 +97,29 @@ const theme = null;
       <NDialogProvider>
         <NLayout class="app-root">
           <NLayoutHeader bordered class="app-header">
-            <div class="title">🛠️ 工作助手</div>
+            <NButtonGroup size="small">
+              <NButton
+                class="module-tab"
+                :type="activeModule === 'workspace' ? 'primary' : 'default'"
+                @click="activeModule = 'workspace'"
+              >
+                项目工作台
+              </NButton>
+              <NButton
+                class="module-tab"
+                :type="activeModule === 'events' ? 'primary' : 'default'"
+                @click="activeModule = 'events'"
+              >
+                事件进展
+              </NButton>
+            </NButtonGroup>
             <NButton quaternary circle @click="showSettings = true" title="设置">
               ⚙️
             </NButton>
           </NLayoutHeader>
 
-          <div class="app-content">
+          <!-- 模块一：项目工作台 -->
+          <div v-show="activeModule === 'workspace'" class="app-content">
             <!-- 固定区：快捷应用 + 搜索框，不随项目列表滚动 -->
             <div class="sticky-top">
               <div ref="launcherAreaEl">
@@ -126,6 +149,23 @@ const theme = null;
 
             <AddProjectButton @added="refreshProjects" />
           </div>
+
+          <!-- 模块二：事件进展（与工作台互相独立） -->
+          <div v-show="activeModule === 'events'" class="app-content">
+            <div class="sticky-top no-gutter">
+              <div class="search-row">
+                <NInput
+                  v-model:value="eventSearch"
+                  placeholder="🔍 搜索事件标题或进展内容"
+                  clearable
+                />
+              </div>
+            </div>
+            <!-- 事件看板自己管内部滚动（新建行与分类条固定） -->
+            <div class="event-area">
+              <EventBoard :search="eventSearch" />
+            </div>
+          </div>
         </NLayout>
 
         <SettingsDialog v-model:visible="showSettings" />
@@ -151,13 +191,18 @@ const theme = null;
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 0 16px;
   background: #ffffff;
+  position: relative;
 }
-.title {
-  font-size: 16px;
-  font-weight: 600;
+/* 两个模块页签等宽，避免一长一短 */
+.module-tab {
+  width: 104px;
+}
+.app-header :deep(.n-button--quaternary) {
+  position: absolute;
+  right: 12px;
 }
 .app-content {
   flex: 1;
@@ -168,14 +213,41 @@ const theme = null;
 }
 .sticky-top {
   flex: none;
-  padding: 12px 12px 0 12px;
+  /* 右侧多留出滚动条宽度，与下方滚动区内容左右对齐 */
+  padding: 12px 22px 0 12px;
   background: #f5f6f8;
+}
+/* 事件模块的搜索区：滚动条由 EventBoard 内部预留，这里无需额外留白 */
+.sticky-top.no-gutter {
+  padding-right: 12px;
 }
 .scroll-area {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 始终预留滚动条宽度，内容变长出现滚动条时布局不再左右跳动 */
+  scrollbar-gutter: stable;
   padding: 0 12px 12px 12px;
+}
+.scroll-area::-webkit-scrollbar {
+  width: 10px;
+}
+.scroll-area::-webkit-scrollbar-thumb {
+  background: #d4d8dd;
+  border-radius: 5px;
+}
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: #bfc5cc;
+}
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* 事件模块：不在外层滚动，交给 EventBoard 内部的滚动区 */
+.event-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 12px;
 }
 .search-row {
   margin: 12px 0;

@@ -38,6 +38,9 @@ pub fn launchers_path() -> PathBuf {
 pub fn projects_path() -> PathBuf {
     data_dir().join("projects.json")
 }
+pub fn events_path() -> PathBuf {
+    data_dir().join("events.json")
+}
 pub fn logs_dir() -> PathBuf {
     data_dir().join("logs")
 }

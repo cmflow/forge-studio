@@ -56,6 +56,42 @@ pub struct ProjectStatus {
     pub exists: bool,
 }
 
+/// 事件进展中的单个节点
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgressStep {
+    pub id: String,
+    /// 节点描述，例如「已联系厂商确认参数」
+    pub text: String,
+    /// "pending" | "doing" | "done"
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+/// 一个「事件」，由若干进展节点串成处理流程
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgressEvent {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub note: String,
+    /// 分类名，空字符串表示「未分类」
+    #[serde(default)]
+    pub category: String,
+    /// "open" | "done"
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub starred: bool,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+    #[serde(default)]
+    pub steps: Vec<ProgressStep>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OpenKind {

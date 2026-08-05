@@ -1,9 +1,11 @@
 pub mod commands;
 pub mod models;
 pub mod storage;
+pub mod sync;
 
-use commands::{config as cmd_config, icon as cmd_icon, launcher as cmd_launcher,
-    logger as cmd_logger, misc as cmd_misc, open as cmd_open, project as cmd_project};
+use commands::{config as cmd_config, event as cmd_event, icon as cmd_icon,
+    launcher as cmd_launcher, logger as cmd_logger, misc as cmd_misc, open as cmd_open,
+    project as cmd_project, sync as cmd_sync};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,6 +39,17 @@ pub fn run() {
             cmd_project::check_projects,
             // open
             cmd_open::open_target,
+            // event（事件进展模块）
+            cmd_event::list_events,
+            cmd_event::add_event,
+            cmd_event::update_event,
+            cmd_event::set_event_category,
+            cmd_event::remove_event,
+            cmd_event::toggle_event_star,
+            cmd_event::toggle_event_status,
+            cmd_event::add_step,
+            cmd_event::cycle_step_state,
+            cmd_event::remove_step,
             // logger
             cmd_logger::append_log,
             // misc
@@ -47,6 +60,10 @@ pub fn run() {
             cmd_misc::set_autostart,
             // icon
             cmd_icon::get_launcher_icon,
+            // sync（坚果云 WebDAV）
+            cmd_sync::get_sync_credential,
+            cmd_sync::set_sync_credential,
+            cmd_sync::diagnose_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

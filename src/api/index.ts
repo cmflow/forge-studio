@@ -4,8 +4,11 @@ import type {
   AppConfig,
   Launcher,
   OpenKind,
+  ProgressEvent,
   Project,
   ProjectStatus,
+  SyncDiagnostic,
+  WebdavCredential,
 } from "../types";
 
 // ---------- Config ----------
@@ -53,6 +56,39 @@ export const checkProjects = () => invoke<ProjectStatus[]>("check_projects");
 // ---------- Open ----------
 export const openTarget = (kind: OpenKind, projectId: string) =>
   invoke<void>("open_target", { kind, projectId });
+
+// ---------- Event（事件进展） ----------
+export const listEvents = () => invoke<ProgressEvent[]>("list_events");
+export const addEvent = (title: string, note?: string) =>
+  invoke<ProgressEvent>("add_event", { title, note });
+export const updateEvent = (
+  id: string,
+  payload: { title?: string; note?: string },
+) => invoke<ProgressEvent>("update_event", { id, ...payload });
+export const removeEvent = (id: string) =>
+  invoke<void>("remove_event", { id });
+/** 设置分类，传空字符串归回「未分类」 */
+export const setEventCategory = (id: string, category: string) =>
+  invoke<ProgressEvent>("set_event_category", { id, category });
+export const toggleEventStar = (id: string) =>
+  invoke<void>("toggle_event_star", { id });
+export const toggleEventStatus = (id: string) =>
+  invoke<ProgressEvent>("toggle_event_status", { id });
+export const addStep = (eventId: string, text: string) =>
+  invoke<ProgressEvent>("add_step", { eventId, text });
+export const cycleStepState = (eventId: string, stepId: string) =>
+  invoke<ProgressEvent>("cycle_step_state", { eventId, stepId });
+export const removeStep = (eventId: string, stepId: string) =>
+  invoke<ProgressEvent>("remove_step", { eventId, stepId });
+
+// ---------- Sync（坚果云 WebDAV） ----------
+export const getSyncCredential = () =>
+  invoke<WebdavCredential>("get_sync_credential");
+export const setSyncCredential = (credential: WebdavCredential) =>
+  invoke<void>("set_sync_credential", { credential });
+/** 连通性自检：鉴权 → 建目录 → 上传 → 下载 → 清理 */
+export const diagnoseSync = (remoteDir: string) =>
+  invoke<SyncDiagnostic>("diagnose_sync", { remoteDir });
 
 // ---------- Misc ----------
 export const openLogsDir = () => invoke<void>("open_logs_dir");
