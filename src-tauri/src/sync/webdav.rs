@@ -34,6 +34,20 @@ pub struct RemoteStat {
     pub exists: bool,
     /// 字节数，未知则为 0
     pub size: u64,
+    /// 服务端 Last-Modified 原文，未知则为空
+    pub last_modified: String,
+    /// ETag，用于判断内容是否变化
+    pub etag: String,
+}
+
+/// PROPFIND 列出的目录条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteEntry {
+    /// 文件名（不含路径）
+    pub name: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub last_modified: String,
 }
 
 pub struct WebdavClient {
@@ -136,7 +150,7 @@ impl WebdavClient {
         Ok(())
     }
 
-    /// 查询远端文件是否存在及大小（HEAD）
+    /// 查询远端文件是否存在、大小、修改时间（HEAD）
     pub fn stat(&self, path: &str) -> Result<RemoteStat, String> {
         let resp = self
             .client
@@ -147,21 +161,93 @@ impl WebdavClient {
 
         match resp.status() {
             StatusCode::OK => {
-                let size = resp
-                    .headers()
-                    .get(reqwest::header::CONTENT_LENGTH)
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.parse::<u64>().ok())
+                let h = |k: reqwest::header::HeaderName| {
+                    resp.headers()
+                        .get(k)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string()
+                };
+                let size = h(reqwest::header::CONTENT_LENGTH)
+                    .parse::<u64>()
                     .unwrap_or(0);
-                Ok(RemoteStat { exists: true, size })
+                Ok(RemoteStat {
+                    exists: true,
+                    size,
+                    last_modified: h(reqwest::header::LAST_MODIFIED),
+                    etag: h(reqwest::header::ETAG),
+                })
             }
             StatusCode::NOT_FOUND => Ok(RemoteStat {
                 exists: false,
                 size: 0,
+                last_modified: String::new(),
+                etag: String::new(),
             }),
             StatusCode::UNAUTHORIZED => Err("鉴权失败（401）".into()),
             s => Err(format!("查询远端文件失败：{}", s)),
         }
+    }
+
+    /// 列出目录下的条目（PROPFIND Depth:1）。
+    /// 坚果云返回标准 WebDAV XML，这里做轻量解析，不引入 XML 依赖：
+    /// 按 <d:response> 切块，再从每块中提取 href / getcontentlength / getlastmodified。
+    pub fn list_dir(&self, dir: &str) -> Result<Vec<RemoteEntry>, String> {
+        let dir_norm = format!("{}/", dir.trim_matches('/'));
+        let resp = self
+            .client
+            .request(
+                reqwest::Method::from_bytes(b"PROPFIND").unwrap(),
+                self.url(&dir_norm),
+            )
+            .header("Authorization", self.auth())
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml; charset=utf-8")
+            .body(
+                r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop>
+<d:resourcetype/><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>"#,
+            )
+            .send()
+            .map_err(|e| format!("列目录失败：{}", e))?;
+
+        match resp.status() {
+            StatusCode::MULTI_STATUS | StatusCode::OK => {}
+            StatusCode::NOT_FOUND => return Ok(Vec::new()),
+            StatusCode::UNAUTHORIZED => return Err("鉴权失败（401）".into()),
+            s => return Err(format!("列目录失败：{}", s)),
+        }
+
+        let xml = resp.text().map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+
+        for block in xml.split("response>").skip(1) {
+            let href = match extract_tag(block, "href") {
+                Some(h) => h,
+                None => continue,
+            };
+            // href 是 URL 编码的绝对路径，取最后一段作为名字
+            let trimmed = href.trim_end_matches('/');
+            let name_raw = trimmed.rsplit('/').next().unwrap_or("");
+            if name_raw.is_empty() {
+                continue;
+            }
+            let name = percent_decode(name_raw);
+            let is_dir = href.ends_with('/') || block.contains("collection");
+            // 目录自身也会出现在结果中，按名字与请求目录相同则跳过
+            let req_name = dir.trim_matches('/').rsplit('/').next().unwrap_or("");
+            if is_dir && name == req_name {
+                continue;
+            }
+            out.push(RemoteEntry {
+                name,
+                is_dir,
+                size: extract_tag(block, "getcontentlength")
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(0),
+                last_modified: extract_tag(block, "getlastmodified").unwrap_or_default(),
+            });
+        }
+        Ok(out)
     }
 
     /// 下载文件内容为字符串。文件不存在返回 Ok(None)。
@@ -223,4 +309,46 @@ impl WebdavClient {
             s => Err(format!("删除失败：{}", s)),
         }
     }
+}
+
+/// 从 XML 片段里取某个标签的文本，忽略命名空间前缀（如 d:href / D:href / dav:href）。
+/// 注意闭合标签形如 `</d:href>`，不能直接搜 `</href`（会因中间的 `d:` 前缀匹配不上），
+/// 所以要逐段找 `</`，再去掉前缀后与标签名比对。
+fn extract_tag(block: &str, tag: &str) -> Option<String> {
+    let mut search_from = 0;
+    while let Some(rel) = block[search_from..].find("</") {
+        let close_start = search_from + rel;
+        let after = &block[close_start + 2..];
+        // 标签名由字母数字、冒号、连字符组成，遇到其它字符（通常是 '>'）即为结束
+        let name_end = after
+            .find(|c: char| !c.is_ascii_alphanumeric() && c != ':' && c != '-')
+            .unwrap_or(after.len());
+        let tag_name = &after[..name_end];
+        if tag_name.ends_with(tag) {
+            // 从闭合标签位置往前找最近的 '>'，即开标签的结束位置
+            let open_end = block[..close_start].rfind('>')?;
+            return Some(block[open_end + 1..close_start].trim().to_string());
+        }
+        search_from = close_start + 2;
+    }
+    None
+}
+
+/// 极简 percent-decode，只处理 %XX。文件名里主要是中文与常见符号，够用。
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
 }

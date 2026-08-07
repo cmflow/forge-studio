@@ -64,6 +64,12 @@ pub fn run() {
             cmd_sync::get_sync_credential,
             cmd_sync::set_sync_credential,
             cmd_sync::diagnose_sync,
+            cmd_sync::get_device_info,
+            cmd_sync::push_events,
+            cmd_sync::pull_events,
+            cmd_sync::list_remote_archives,
+            cmd_sync::get_sync_settings,
+            cmd_sync::set_sync_auto_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

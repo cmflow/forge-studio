@@ -9,14 +9,14 @@
 
 - 阶段：**核心功能全部落地，可日常使用**
 - 版本：`0.1.0`
-- 更新日期：2026-08-03
+- 更新日期：2026-08-06
 
 后续每次功能落地或结构调整，都会同步更新本 README。
 
 ### 功能清单（已实现 ✅）
 
 **项目管理**
-- ✅ 添加项目：右下角 ＋ 选择文件夹 · 拖拽文件夹到窗口批量添加
+- ✅ 添加项目：右下角 ＋ 选择文件夹 · 拖拽文件夹到窗口批量添加 
 - ✅ 智能扫描：递归遍历自动识别 `.cbp` / `.dcf`（支持 `projects/` 下的多层子目录）
 - ✅ 双击项目名物理重命名：非法字符校验 + 冲突检测 + `std::fs::rename` + 清缓存 + 重扫
 - ✅ 一键打开：文件夹 / IDE（VSCode 或 Trae）/ CodeBlocks / 烧录工具
@@ -35,6 +35,19 @@
 - ✅ 左键启动（自动切 CWD 到 exe 目录，避免"运行环境异常"）· 右键菜单（星标 / 移除）
 - ✅ 星标置顶
 - ✅ 工具目录自动扫描：指定根目录后，每个子目录取第一个 `.exe` 自动加入（同名跳过）
+
+**事件进展**
+- ✅ 事件管理：新建 / 编辑 / 删除 · 星标置顶 · 分类标签（自定义分类，下拉管理）
+- ✅ 进展节点：添加节点自动把上一个「进行中」收敛为「已完成」，节点状态三态循环（待办 → 进行中 → 已完成）
+- ✅ 归档 / 重开：归档时间独立存储（不被编辑覆盖），卡片同时展示创建与归档日期
+- ✅ 归档视图：按月筛选（最近 5 个月平铺 + 更多月份收进「更早」下拉）· 分类筛选叠加生效
+
+**多端云同步（坚果云 WebDAV）**
+- ✅ 每台设备独立云端存档（`events-设备名.json`），各写各的，上传永不互相覆盖
+- ✅ 自动上传（默认 10 分钟一次，可关）+ 手动上传 + 任选云端存档恢复
+- ✅ 篡改检测：存档带内容指纹，被外部改动后自动上传 / 恢复均被拦截（可手动强制覆盖）
+- ✅ 凭据共享存储（`%USERPROFILE%\.cloudsync\credential.json`，跨项目复用）· 连接诊断向导（探针写入 / 回读 / 清理）
+- ✅ 网络请求全部在后台线程执行，断网不卡界面
 
 **设置面板**
 - ✅ 开机自启开关（写入 `HKCU\...\Run`，无需管理员权限，即点即生效）
@@ -72,12 +85,16 @@
 所有用户数据存放在 **用户主目录下的 `.forge-studio/`** 文件夹内：
 
 ```
-C:\Users\<你的用户名>\.forge-studio\
-├── config.json          # 全局配置（工具路径、默认 IDE、扫描设置）
-├── launchers.json       # 快捷应用列表
-├── projects.json        # 项目列表（核心数据）
-└── logs/                # 按日期切割的日志
-    └── 2026-08-03.log
+C:\Users\<你的用户名>\
+├── .forge-studio\        # 本应用数据
+│   ├── config.json       # 全局配置（工具路径、默认 IDE、扫描设置、同步设置）
+│   ├── launchers.json    # 快捷应用列表
+│   ├── projects.json     # 项目列表（核心数据）
+│   ├── events.json       # 事件进展列表
+│   └── logs/             # 按日期切割的日志
+│       └── 2026-08-06.log
+└── .cloudsync\           # 跨项目共享的云同步凭据（可被其它应用复用）
+    └── credential.json   # 坚果云 WebDAV 账号 + 应用密码
 ```
 
 **为什么不放 exe 同级**：开发期 exe 在 `target/debug/`，release 在 `target/release/`，两者数据会分裂；放用户目录后，`npm run tauri dev` 与打包后的 exe **共享同一份数据**，切换无感。
@@ -96,13 +113,19 @@ C:\Users\<你的用户名>\.forge-studio\
   "burn_tool_path": "C:/dev_utils/downloader_v3.5.0/Downloader.exe",
   "default_ide": "vscode",
   "dev_utils_root": "C:/dev_utils",
-  "scan_dev_utils_on_start": true
+  "scan_dev_utils_on_start": true,
+  "sync_remote_dir": "apps/forge-studio",
+  "sync_enabled": true,
+  "sync_auto_push": true
 }
 ```
 
 - `default_ide`：`"vscode"` | `"trae"`，决定卡片上 *IDE* 按钮调用哪个
 - `dev_utils_root`：工具目录根路径，扫描时每个子目录取第一个 `.exe`
 - `scan_dev_utils_on_start`：应用启动时是否自动扫描该目录
+- `sync_remote_dir`：本应用在云端的目录（坚果云下）
+- `sync_enabled`：云同步是否启用（诊断连接通过后自动置位）
+- `sync_auto_push`：是否每 10 分钟自动上传本机存档（只由同步面板开关修改，设置弹窗保存不会覆盖它）
 
 ### 2. `launchers.json`
 
@@ -130,6 +153,44 @@ C:\Users\<你的用户名>\.forge-studio\
 ]
 ```
 
+### 4. `events.json`
+
+```json
+[
+  {
+    "id": "evt_uuid1",
+    "title": "dut盒子概率进不了dut",
+    "note": "复现条件：冷启动时概率出现",
+    "category": "客户返修",
+    "status": "open",
+    "archived_at": 0,
+    "starred": false,
+    "created_at": 1750000000000,
+    "updated_at": 1750000000000,
+    "steps": [
+      { "id": "step_uuid1", "text": "已联系厂商确认参数", "state": "doing", "created_at": 1750000000000 }
+    ]
+  }
+]
+```
+
+- `status`：`"open"` 进行中 | `"done"` 已归档（状态用 Rust 枚举序列化，拼写错误编译期即报错）
+- `archived_at`：归档时间戳，`0` 表示未归档；独立存储，不被 `updated_at` 覆盖
+- `steps[].state`：`"pending"` | `"doing"` | `"done"`，点击节点圆点三态循环
+- `category`：分类名，空字符串表示「未分类」
+
+### 5. 云端存档结构（坚果云）
+
+```
+apps/forge-studio/
+├── events-DESKTOP-ABC.json      # 每台设备一份，文件名含设备标识
+├── events-DESKTOP-XYZ.json
+└── _probe-forge-studio.json     # 连接诊断探针（诊断后自动删除）
+```
+
+每份存档是带版本头的信封结构：`{ version, device_id, device_name, updated_at, event_count, fingerprint, events }`。
+`fingerprint` 为事件内容的哈希，用于篡改检测（对字段顺序不敏感，调整字段声明顺序不会误判）。
+
 ---
 
 ## 五、后端 Rust Commands 清单
@@ -154,6 +215,14 @@ C:\Users\<你的用户名>\.forge-studio\
 | 日志记录 | `append_log` | 追加写入当天日志 |
 | 打开数据目录 | `open_logs_dir` | 系统资源管理器打开 `logs/` |
 | 清空数据 | `clear_all_data` | 二次确认后清空三份 JSON |
+| 事件管理 | `list_events` / `add_event` / `update_event` / `remove_event` | 事件增删改（统一走 `mutate_event` 入口，自动刷新 `updated_at`） |
+| 事件操作 | `toggle_event_star` / `toggle_event_status` / `set_event_category` | 星标 / 归档与重开（记录 `archived_at`）/ 分类 |
+| 进展节点 | `add_step` / `cycle_step_state` / `remove_step` | 添加（自动收敛上一个 doing）/ 三态循环 / 删除 |
+| 同步设置 | `get_sync_settings` / `set_sync_auto_push` | 读同步设置 / 只改自动上传开关（专用命令，互不覆盖） |
+| 同步诊断 | `diagnose_sync` | 探针写入 → 回读比对 → 清理 → 记录目录并启用 |
+| 同步传输 | `push_events` / `pull_events` | 上传本机存档（篡改检测）/ 恢复云端存档（拒绝被篡改的） |
+| 存档列表 | `list_remote_archives` | 列云端全部存档（设备名 / 条数 / 更新时间 / 完整性） |
+| 设备信息 | `get_device_info` | 本机设备标识与名称（用于存档命名） |
 
 ---
 
@@ -254,12 +323,17 @@ forge-studio/
 │   │   └── index.ts          # 前后端共享类型
 │   ├── api/
 │   │   └── index.ts          # invoke 包装
+│   ├── utils/
+│   │   └── date.ts           # 事件模块共用日期/月份格式化（单一来源）
 │   └── components/
 │       ├── LauncherBar.vue
 │       ├── ProjectList.vue
 │       ├── ProjectCard.vue
 │       ├── SettingsDialog.vue
-│       └── AddProjectButton.vue
+│       ├── AddProjectButton.vue
+│       ├── EventBoard.vue    # 事件看板（含归档视图 + 月份筛选）
+│       ├── EventCard.vue     # 事件卡片（进展节点 / 分类 / 归档）
+│       └── SyncPanel.vue     # 云同步面板（上传 / 存档列表 / 自动上传开关）
 └── src-tauri/                # Rust 后端
     ├── Cargo.toml
     ├── tauri.conf.json
@@ -274,14 +348,21 @@ forge-studio/
         ├── storage.rs        # %USERPROFILE%/.forge-studio 目录 & JSON 读写
         └── commands/
             ├── mod.rs
-            ├── config.rs     # 配置读写 + 工具路径自动识别
+            ├── config.rs     # 配置读写（合并写防覆盖）+ 工具路径自动识别
             ├── launcher.rs   # 快捷应用 + 工具目录扫描
             ├── icon.rs       # exe 图标提取（Win32 API + PNG 编码 + 缓存）
             ├── project.rs
             ├── scan.rs
             ├── open.rs       # 打开分派（含烧录工具 config 改写）
+            ├── event.rs      # 事件进展（状态枚举化 + 统一 mutate_event 入口）
+            ├── sync.rs       # 云同步命令（设置 / 诊断 / 上传 / 恢复 / 列表）
             ├── logger.rs
             └── misc.rs       # 日志目录 / 清空数据 / 定位文件 / 开机自启
+        └── sync/
+            ├── mod.rs
+            ├── envelope.rs   # 云端存档信封 + 内容指纹（排序 key，与字段顺序无关）
+            ├── webdav.rs     # WebDAV 客户端（PROPFIND 列表 / GET / PUT / 建目录）
+            └── credential.rs # 共享凭据 .cloudsync\credential.json
 ```
 
 ---
@@ -325,6 +406,12 @@ npm run tauri dev
 
 ## 十一、更新日志
 
+- `2026-08-06`：新增事件进展模块 + 坚果云多端同步；两轮防错重构。
+  - **新功能 · 事件进展**：事件看板（新建 / 编辑 / 删除 / 星标 / 分类）· 进展节点（添加自动收敛上一个进行中、三态循环）· 归档 / 重开（归档时间独立存储）· 归档视图按月筛选（最多平铺 5 个，更早收进下拉）· 分类筛选叠加。
+  - **新功能 · 云同步**：每设备独立存档互不覆盖 · 自动上传（10 分钟）· 篡改检测（内容指纹，异常拒绝上传 / 恢复，可强制覆盖）· 存档列表恢复 · 连接诊断向导 · 凭据跨项目共享 · 网络请求后台线程执行不卡界面。
+  - **重构 · 本地事件**：`status` / `state` 裸字符串改 Rust 枚举（拼错编译不过）· 9 处「读-改-写」样板收敛为统一 `mutate_event` 入口（强制刷新 `updated_at`）· 日期 / 月份逻辑抽成 `utils/date.ts` 单一来源 · JSON 改为原子写（临时文件 + rename，崩溃不损坏数据）。
+  - **重构 · 云同步**：`save_config` 合并写 + `set_sync_auto_push` 专用命令，消灭配置双写方互相覆盖 · 拉取拒绝被篡改存档 · 指纹改为排序 key（调整字段顺序不误判）· 修 WebDAV PROPFIND 带命名空间前缀的 XML 解析 · 同步模块去除对命令层的反向依赖。
+  - **UI**：设置弹窗支持指定初始页签（同步条「去设置」直达事件进展页）· 同步面板嵌设置页与事件页两处复用 · 事件卡片展示「N 条进展」与绿色归档日期。
 - `2026-08-03`：UX 打磨 + 新功能 + 出包流程定型。
   - **Bug 修复**：列表操作后闪烁（改静默刷新）· 滚动时快捷应用被顶走（改双层布局）· 多 cbp/dcf 无法辨认当前项（加 ✔ 与 tooltip）· 空白区弹出 WebView 原生右键菜单 · 快捷应用按钮文字 descender 被裁。
   - **新功能**：默认 IDE（VSCode / Trae）· Trae 路径自动识别 · 工具目录自动扫描（启动时 / 保存时 / 手动）· 开机自启开关 · `.dcf` 右键在资源管理器中定位。

@@ -7,7 +7,10 @@ import type {
   ProgressEvent,
   Project,
   ProjectStatus,
+  PushOutcome,
+  RemoteArchive,
   SyncDiagnostic,
+  SyncSettings,
   WebdavCredential,
 } from "../types";
 
@@ -59,8 +62,8 @@ export const openTarget = (kind: OpenKind, projectId: string) =>
 
 // ---------- Event（事件进展） ----------
 export const listEvents = () => invoke<ProgressEvent[]>("list_events");
-export const addEvent = (title: string, note?: string) =>
-  invoke<ProgressEvent>("add_event", { title, note });
+export const addEvent = (title: string, note?: string, category?: string) =>
+  invoke<ProgressEvent>("add_event", { title, note, category });
 export const updateEvent = (
   id: string,
   payload: { title?: string; note?: string },
@@ -71,7 +74,7 @@ export const removeEvent = (id: string) =>
 export const setEventCategory = (id: string, category: string) =>
   invoke<ProgressEvent>("set_event_category", { id, category });
 export const toggleEventStar = (id: string) =>
-  invoke<void>("toggle_event_star", { id });
+  invoke<ProgressEvent>("toggle_event_star", { id });
 export const toggleEventStatus = (id: string) =>
   invoke<ProgressEvent>("toggle_event_status", { id });
 export const addStep = (eventId: string, text: string) =>
@@ -89,6 +92,21 @@ export const setSyncCredential = (credential: WebdavCredential) =>
 /** 连通性自检：鉴权 → 建目录 → 上传 → 下载 → 清理 */
 export const diagnoseSync = (remoteDir: string) =>
   invoke<SyncDiagnostic>("diagnose_sync", { remoteDir });
+/** 当前设备标识与显示名 [device_id, device_name] */
+export const getDeviceInfo = () => invoke<[string, string]>("get_device_info");
+/** 上传本机存档。force=true 跳过篡改检测强制覆盖 */
+export const pushEvents = (force = false) =>
+  invoke<PushOutcome>("push_events", { force });
+/** 下载指定设备的存档并覆盖本地，同时另存为本机存档 */
+export const pullEvents = (device: string) =>
+  invoke<PushOutcome>("pull_events", { device });
+/** 列出云端所有设备存档 */
+export const listRemoteArchives = () =>
+  invoke<RemoteArchive[]>("list_remote_archives");
+export const getSyncSettings = () => invoke<SyncSettings>("get_sync_settings");
+/** 只改自动上传开关，不碰其它同步设置 */
+export const setSyncAutoPush = (enabled: boolean) =>
+  invoke<void>("set_sync_auto_push", { enabled });
 
 // ---------- Misc ----------
 export const openLogsDir = () => invoke<void>("open_logs_dir");

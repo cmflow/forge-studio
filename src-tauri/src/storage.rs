@@ -59,12 +59,15 @@ pub fn read_json<T: DeserializeOwned + Default>(path: &Path) -> Result<T, String
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
-pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+pub fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<(), String> {
     let _guard = IO_LOCK.lock().map_err(|e| e.to_string())?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let s = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    std::fs::write(path, s).map_err(|e| e.to_string())?;
+    // 先写临时文件再改名：即使中途崩溃，原文件也保持完整，不会留下半截 JSON
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, s).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
     Ok(())
 }

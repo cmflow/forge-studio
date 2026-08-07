@@ -11,7 +11,16 @@ pub fn load_config() -> Result<AppConfig, String> {
 
 #[tauri::command]
 pub fn save_config(config: AppConfig) -> Result<(), String> {
-    write_json(&config_path(), &config)
+    // 合并保存：sync_auto_push 以磁盘现值优先，不覆盖。
+    // 该字段只由 SyncPanel 的开关（set_sync_auto_push）修改；设置弹窗可能在
+    // 打开后用旧快照全量保存，若一并写回会把用户刚开的开关冲回关（此前踩过坑）。
+    // 其余同步字段（remote_dir / enabled）只有设置弹窗这一处 UI 写入，无并发写者。
+    let current = read_json::<AppConfig>(&config_path()).unwrap_or_default();
+    let merged = AppConfig {
+        sync_auto_push: current.sync_auto_push,
+        ..config
+    };
+    write_json(&config_path(), &merged)
 }
 
 /// 展开环境变量占位（如 %LOCALAPPDATA%）后判断是否是存在的文件

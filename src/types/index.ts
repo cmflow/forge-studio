@@ -12,6 +12,12 @@ export interface AppConfig {
   dev_utils_root: string;
   /** 启动应用时自动扫描 dev_utils_root */
   scan_dev_utils_on_start: boolean;
+  /** 坚果云云端目录（如 apps/forge-studio） */
+  sync_remote_dir: string;
+  /** 是否启用坚果云同步 */
+  sync_enabled: boolean;
+  /** 是否每 10 分钟自动上传本机存档 */
+  sync_auto_push: boolean;
 }
 
 export interface Launcher {
@@ -67,6 +73,9 @@ export interface SyncDiagnostic {
 /** 进展节点状态：待办 / 进行中 / 已完成 */
 export type StepState = "pending" | "doing" | "done";
 
+/** 事件状态：open 进行中 | done 已归档 */
+export type EventStatus = "open" | "done";
+
 export interface ProgressStep {
   id: string;
   text: string;
@@ -80,10 +89,40 @@ export interface ProgressEvent {
   note: string;
   /** 分类名，空字符串表示「未分类」 */
   category: string;
-  /** "open" 进行中 | "done" 已归档 */
-  status: string;
+  status: EventStatus;
+  /** 归档时间戳，0 表示未归档 */
+  archived_at: number;
   starred: boolean;
   created_at: number;
   updated_at: number;
   steps: ProgressStep[];
+}
+
+// ---------- 云同步（坚果云 WebDAV） ----------
+
+/** 云端一份设备存档的摘要 */
+export interface RemoteArchive {
+  device_id: string;
+  device_name: string;
+  updated_at: number;
+  event_count: number;
+  /** 是否为当前这台电脑的存档 */
+  is_self: boolean;
+  /** 指纹校验是否通过，false 表示被外部改动过 */
+  intact: boolean;
+}
+
+/** 上传 / 下载结果 */
+export interface PushOutcome {
+  ok: boolean;
+  message: string;
+  /** 检测到云端存档被篡改 */
+  tampered: boolean;
+  updated_at: number;
+}
+
+export interface SyncSettings {
+  remote_dir: string;
+  enabled: boolean;
+  auto_push: boolean;
 }

@@ -4,6 +4,7 @@
 import { computed, h, ref } from "vue";
 import { NButton, NDropdown, NInput, NTag, useDialog, useMessage } from "naive-ui";
 import type { ProgressEvent, StepState } from "../types";
+import { fmtDateTime, shortDate } from "../utils/date";
 import {
   addStep,
   cycleStepState,
@@ -39,12 +40,9 @@ const STEP_META: Record<StepState, { icon: string; label: string }> = {
 
 const isDone = computed(() => props.event.status === "done");
 
-/** 进度：已完成节点 / 总节点 */
-const progress = computed(() => {
-  const total = props.event.steps.length;
-  const done = props.event.steps.filter((s) => s.state === "done").length;
-  return { total, done };
-});
+/** 进展节点总数。不再显示 done/total，因为 add_step 会自动收敛上一节点，
+    done 恒等于 total-1，该比值无信息量 */
+const stepCount = computed(() => props.event.steps.length);
 
 /** 当前正在进行的节点文案，用于折叠时概览 */
 const currentStep = computed(
@@ -54,12 +52,13 @@ const currentStep = computed(
     null,
 );
 
-function fmt(ts: number) {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+/** 事件创建日期 */
+const createdDate = computed(() => shortDate(props.event.created_at));
+
+/** 归档日期，与创建日期同一格式规则 */
+const archivedDate = computed(() =>
+  props.event.archived_at ? shortDate(props.event.archived_at) : "",
+);
 
 /** 统一包装：串行化请求 + 错误提示 + 刷新 */
 async function guard(fn: () => Promise<unknown>) {
@@ -166,7 +165,14 @@ function onRemoveEvent() {
           <NTag v-if="isDone" size="small" type="success" :bordered="false">已归档</NTag>
         </div>
         <div class="meta">
-          <span class="count">{{ progress.done }}/{{ progress.total }} 步</span>
+          <span class="date" :title="'创建于 ' + fmtDateTime(event.created_at)">
+            📅 {{ createdDate }}
+          </span>
+          <span v-if="archivedDate" class="date archived-date" :title="'归档于 ' + fmtDateTime(event.archived_at)">
+            ✓ {{ archivedDate }}
+          </span>
+          <span v-if="stepCount" class="count">{{ stepCount }} 条进展</span>
+          <span v-else class="count empty-count">尚无进展</span>
           <span v-if="currentStep && !expanded" class="current">
             {{ STEP_META[currentStep.state].icon }} {{ currentStep.text }}
           </span>
@@ -223,7 +229,7 @@ function onRemoveEvent() {
               <div class="step-text">{{ s.text }}</div>
               <div class="step-meta">
                 <span>{{ STEP_META[s.state].label }}</span>
-                <span>{{ fmt(s.created_at) }}</span>
+                <span>{{ fmtDateTime(s.created_at) }}</span>
                 <button class="del-step" title="删除该进展" @click="onRemoveStep(s.id)">
                   ✕
                 </button>
@@ -323,6 +329,19 @@ function onRemoveEvent() {
   background: #f1f3f5;
   border-radius: 4px;
   font-size: 11px;
+}
+.date {
+  flex: none;
+  color: #9ca3af;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.archived-date {
+  color: #18a058;
+  font-weight: 500;
+}
+.empty-count {
+  color: #b0b5bb;
 }
 .current {
   color: #2f80ed;

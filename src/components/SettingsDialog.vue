@@ -30,12 +30,22 @@ import {
   setSyncCredential,
 } from "../api";
 import type { AppConfig, SyncDiagnostic, WebdavCredential } from "../types";
+import SyncPanel from "./SyncPanel.vue";
 
-const props = defineProps<{ visible: boolean }>();
+const props = defineProps<{ visible: boolean; initialTab?: string; syncVersion?: number }>();
 const emit = defineEmits<{ (e: "update:visible", v: boolean): void }>();
 
 const message = useMessage();
 const dialog = useDialog();
+
+/** 当前页签：外部可通过 initialTab 指定打开时落在哪个页（同步条"去设置"→事件进展） */
+const activeTab = ref("workspace");
+watch(
+  () => props.initialTab,
+  (tab) => {
+    if (tab) activeTab.value = tab;
+  },
+);
 
 const cfg = ref<AppConfig>({
   vscode_path: "",
@@ -45,11 +55,17 @@ const cfg = ref<AppConfig>({
   default_ide: "vscode",
   dev_utils_root: "",
   scan_dev_utils_on_start: false,
+  sync_remote_dir: "",
+  sync_enabled: false,
+  sync_auto_push: false,
 });
 
 /** 开机自启开关（直接读写注册表，不存 config.json） */
 const autostart = ref(false);
 const autostartBusy = ref(false);
+
+/** 弹窗打开时工具目录的原值：保存时只有目录改动了才重扫，避免每次保存都白扫一遍 */
+const devUtilsRootAtOpen = ref("");
 
 /** 坚果云 WebDAV 凭据（跨项目共享，存在 .cloudsync\credential.json） */
 const cred = ref<WebdavCredential>({
@@ -61,6 +77,8 @@ const cred = ref<WebdavCredential>({
 const remoteDir = ref("apps/forge-studio");
 const diagnosing = ref(false);
 const diagResult = ref<SyncDiagnostic | null>(null);
+/** 测试连接成功后自增，强制重挂载 SyncPanel 以刷新"已启用"状态 */
+const syncPanelKey = ref(0);
 
 /** 类型安全的"只设置 string 字段"辅助，避开 keyof AppConfig 含 boolean 时赋值 never 的推断陷阱 */
 function setCfgField(field: keyof AppConfig, value: string) {
@@ -81,7 +99,15 @@ watch(
           default_ide: loaded.default_ide?.trim() ? loaded.default_ide : "vscode",
           dev_utils_root: loaded.dev_utils_root ?? "",
           scan_dev_utils_on_start: !!loaded.scan_dev_utils_on_start,
+          // 同步字段必须一并载入并原样保存，否则 footer「保存」会把
+          // diagnose 写入的 sync_enabled 等字段冲回默认值
+          sync_remote_dir: loaded.sync_remote_dir ?? "",
+          sync_enabled: !!loaded.sync_enabled,
+          sync_auto_push: !!loaded.sync_auto_push,
         };
+        devUtilsRootAtOpen.value = loaded.dev_utils_root ?? "";
+        // 云端目录输入框与配置同步，diagnose 用同一个值
+        remoteDir.value = cfg.value.sync_remote_dir.trim() || "apps/forge-studio";
       } catch (e) {
         // 首次运行时忽略
       }
@@ -116,6 +142,11 @@ async function runDiagnose() {
     await setSyncCredential(cred.value);
     diagResult.value = await diagnoseSync(remoteDir.value);
     if (diagResult.value.ok) {
+      // 把 diagnose 写入的状态同步到 cfg，避免 footer「保存」用旧值覆盖
+      cfg.value.sync_remote_dir = remoteDir.value.trim().replace(/^\/+/, "");
+      cfg.value.sync_enabled = true;
+      // 测试通过说明已启用同步，重挂载同步面板让它立即显示上传/下载
+      syncPanelKey.value++;
       message.success("坚果云连通性自检全部通过");
     } else {
       message.warning("自检未全部通过，请看下方明细");
@@ -210,10 +241,16 @@ async function runScanNow() {
 
 async function save() {
   try {
+    // 云端目录输入框的修改要一并带进配置，否则保存后 remoteDir 与配置脱节
+    cfg.value.sync_remote_dir = remoteDir.value.trim().replace(/^\/+/, "");
     await saveConfig(cfg.value);
     message.success("已保存");
-    // 若开启了"启动时自动扫描"，保存时立即扫一遍，避免改完还得重启
-    if (cfg.value.scan_dev_utils_on_start && (cfg.value.dev_utils_root ?? "").trim()) {
+    // 仅当工具目录真的改动了才重扫，否则每次保存都白扫一遍并弹出提示
+    if (
+      cfg.value.scan_dev_utils_on_start &&
+      (cfg.value.dev_utils_root ?? "").trim() &&
+      (cfg.value.dev_utils_root ?? "").trim() !== devUtilsRootAtOpen.value.trim()
+    ) {
       try {
         const added = await scanDevUtils(cfg.value.dev_utils_root.trim());
         if (added.length > 0) {
@@ -269,7 +306,7 @@ function confirmClear() {
     style="width: 620px"
     @update:show="(v) => emit('update:visible', v)"
   >
-    <NTabs type="line" animated>
+    <NTabs v-model:value="activeTab" type="line" animated>
       <!-- 板块一：项目工作台（原有设置） -->
       <NTabPane name="workspace" tab="项目工作台">
         <NSpace vertical :size="12">
@@ -436,6 +473,14 @@ function confirmClear() {
               </div>
             </div>
           </div>
+
+          <!-- 内嵌同步面板：上传/下载在这里也有入口（embedded 模式不显示"去设置"） -->
+          <SyncPanel
+            :key="syncPanelKey"
+            :version="props.syncVersion"
+            embedded
+            @pulled="syncPanelKey++"
+          />
         </NSpace>
       </NTabPane>
     </NTabs>

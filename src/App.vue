@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import {
   NButton,
   NButtonGroup,
@@ -24,6 +24,17 @@ const activeModule = ref<"workspace" | "events">("workspace");
 const search = ref("");
 const eventSearch = ref("");
 const showSettings = ref(false);
+/** 打开设置弹窗时默认停留的页签：齿轮→项目工作台；同步条"去设置"→事件进展 */
+const settingsTab = ref("workspace");
+function openSettings(tab: string) {
+  settingsTab.value = tab;
+  showSettings.value = true;
+}
+/** 设置弹窗每次关闭后自增，通知同步面板重新拉取配置（可能在设置里启用了同步） */
+const syncVersion = ref(0);
+watch(showSettings, (v) => {
+  if (!v) syncVersion.value++;
+});
 const launcherBarRef = ref<InstanceType<typeof LauncherBar> | null>(null);
 const projectListRef = ref<InstanceType<typeof ProjectList> | null>(null);
 const launcherAreaEl = ref<HTMLElement | null>(null);
@@ -113,7 +124,13 @@ const theme = null;
                 事件进展
               </NButton>
             </NButtonGroup>
-            <NButton quaternary circle @click="showSettings = true" title="设置">
+            <NButton
+              class="settings-btn"
+              quaternary
+              circle
+              @click="openSettings('workspace')"
+              title="设置"
+            >
               ⚙️
             </NButton>
           </NLayoutHeader>
@@ -163,12 +180,20 @@ const theme = null;
             </div>
             <!-- 事件看板自己管内部滚动（新建行与分类条固定） -->
             <div class="event-area">
-              <EventBoard :search="eventSearch" />
+              <EventBoard
+                 :search="eventSearch"
+                 :sync-version="syncVersion"
+                 @goto-settings="openSettings('events')"
+               />
             </div>
           </div>
         </NLayout>
 
-        <SettingsDialog v-model:visible="showSettings" />
+        <SettingsDialog
+          v-model:visible="showSettings"
+          :initial-tab="settingsTab"
+          :sync-version="syncVersion"
+        />
       </NDialogProvider>
     </NMessageProvider>
   </NConfigProvider>
@@ -200,7 +225,9 @@ const theme = null;
 .module-tab {
   width: 104px;
 }
-.app-header :deep(.n-button--quaternary) {
+/* 仅定位顶栏的设置按钮。不可用 :deep(.n-button--quaternary)，
+   那会命中事件卡片内所有 quaternary 按钮并把它们绝对定位，遮挡点击 */
+.settings-btn {
   position: absolute;
   right: 12px;
 }
