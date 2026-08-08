@@ -1,5 +1,5 @@
 // 智能扫描：定位到 `projects` 目录后，只在其中递归查 .cbp / .dcf
-// 规则（针对 STM32 / 嵌入式 SDK 工程）：
+// 规则（针对蓝讯方案工程）：
 //   1. `.cbp` / `.dcf` 一定位于名为 `projects` 的目录内（层级不定）
 //   2. `.dcf` 一定位于 `projects/**/bin/` 之下
 //   3. 需要排除 obj/.git/node_modules 等产物目录；但 bin 不排除（dcf 在里面）

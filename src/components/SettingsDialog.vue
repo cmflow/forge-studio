@@ -89,8 +89,13 @@ watch(
   () => props.visible,
   async (v) => {
     if (v) {
-      try {
-        const loaded = await loadConfig();
+      // 三个调用互不依赖，并行发起，避免串行 await 拖慢弹窗打开
+      const [loaded, autostartVal, loadedCred] = await Promise.all([
+        loadConfig().catch(() => null),
+        getAutostart().catch(() => false),
+        getSyncCredential().catch(() => null),
+      ]);
+      if (loaded) {
         cfg.value = {
           vscode_path: loaded.vscode_path ?? "",
           codeblocks_path: loaded.codeblocks_path ?? "",
@@ -108,16 +113,9 @@ watch(
         devUtilsRootAtOpen.value = loaded.dev_utils_root ?? "";
         // 云端目录输入框与配置同步，diagnose 用同一个值
         remoteDir.value = cfg.value.sync_remote_dir.trim() || "apps/forge-studio";
-      } catch (e) {
-        // 首次运行时忽略
       }
-      try {
-        autostart.value = await getAutostart();
-      } catch (e) {
-        autostart.value = false;
-      }
-      try {
-        const loadedCred = await getSyncCredential();
+      autostart.value = autostartVal;
+      if (loadedCred) {
         cred.value = {
           server: loadedCred.server?.trim()
             ? loadedCred.server
@@ -125,8 +123,6 @@ watch(
           account: loadedCred.account ?? "",
           app_password: loadedCred.app_password ?? "",
         };
-      } catch (e) {
-        // 首次运行无凭据文件，保持默认值
       }
       diagResult.value = null;
     }
@@ -306,7 +302,7 @@ function confirmClear() {
     style="width: 620px"
     @update:show="(v) => emit('update:visible', v)"
   >
-    <NTabs v-model:value="activeTab" type="line" animated>
+    <NTabs v-model:value="activeTab" type="line">
       <!-- 板块一：项目工作台（原有设置） -->
       <NTabPane name="workspace" tab="项目工作台">
         <NSpace vertical :size="12">

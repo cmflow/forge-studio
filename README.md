@@ -1,7 +1,7 @@
 # 工作助手 (Forge Studio)
 
 > 一款 Windows 桌面便携绿色软件：双击 `.exe` 即用、无需安装、数据随身。
-> 用于统一管理常用应用启动、STM32/嵌入式项目的快速打开、编译工程 (`.cbp`) 与烧录文件 (`.dcf`) 的一键调用。
+> 专门适用于蓝讯方案的开发：统一管理常用应用启动、蓝讯方案工程的快速打开、编译工程 (`.cbp`) 与烧录文件 (`.dcf`) 的一键调用。
 
 ---
 
@@ -9,7 +9,7 @@
 
 - 阶段：**核心功能全部落地，可日常使用**
 - 版本：`0.1.0`
-- 更新日期：2026-08-06
+- 更新日期：2026-08-07
 
 后续每次功能落地或结构调整，都会同步更新本 README。
 
@@ -63,6 +63,11 @@
 - ✅ 复制副本按钮防连点
 - ✅ 屏蔽 WebView 自带右键菜单（输入框内保留，便于粘贴）
 
+**启动与响应体验**
+- ✅ 窗口先隐藏（`visible: false`），前端绘制完成后再 `show()`，避免 WebView2 初始化期间的空白窗口
+- ✅ 注册表读写（开机自启查询/设置）走 `spawn_blocking` + `CREATE_NO_WINDOW`，不阻塞 UI 也不闪黑窗
+- ✅ 设置弹窗打开时三个配置读取并行发起，不再串行等待
+
 ---
 
 ## 二、技术选型
@@ -76,7 +81,7 @@
 | 后端语言 | **Rust** | 通过 `tauri::command` 暴露给前端 |
 | 数据存储 | **本地 JSON 文件** | 统一放在 `%USERPROFILE%\.forge-studio\` |
 
-打包输出：**便携版单文件 `.exe`**（绿色免安装，约 4.7 MB）。
+打包输出：**便携版单文件 `.exe`**（绿色免安装，约 5.8 MB）。
 
 ---
 
@@ -141,14 +146,14 @@ C:\Users\<你的用户名>\
 [
   {
     "id": "proj_uuid1",
-    "name": "STM32_Project_A",
-    "path": "D:/Work/STM32_Project_A",
+    "name": "Bluetrum_Project_A",
+    "path": "D:/Work/Bluetrum_Project_A",
     "starred": true,
     "last_accessed": 1700000000000,
-    "cbp_files": ["D:/Work/STM32_Project_A/main.cbp"],
-    "dcf_files": ["D:/Work/STM32_Project_A/output.dcf"],
-    "selected_cbp": "D:/Work/STM32_Project_A/main.cbp",
-    "selected_dcf": "D:/Work/STM32_Project_A/output.dcf"
+    "cbp_files": ["D:/Work/Bluetrum_Project_A/main.cbp"],
+    "dcf_files": ["D:/Work/Bluetrum_Project_A/output.dcf"],
+    "selected_cbp": "D:/Work/Bluetrum_Project_A/main.cbp",
+    "selected_dcf": "D:/Work/Bluetrum_Project_A/output.dcf"
   }
 ]
 ```
@@ -406,6 +411,12 @@ npm run tauri dev
 
 ## 十一、更新日志
 
+- `2026-08-07`：定位/卡顿/黑窗三处体验问题修复 + 启动观感优化。
+  - **Bug 修复 · dcf 定位跳文档目录**：`explorer /select,` 在路径含空格时，Rust 的 `Command::arg` 会给整个参数加引号，explorer 识别不到 `/select` 就回退到默认文档目录。改用 `raw_arg` 精确控制命令行（引号只包路径），并统一反斜杠。
+  - **Bug 修复 · 打开设置卡 3 秒**：`get_autostart` 同步调 `reg.exe` 子进程堵住 Tauri 命令线程池，导致整窗口冻结。改为 `async` + `spawn_blocking`；前端三个配置读取由串行 `await` 改 `Promise.all` 并行。
+  - **Bug 修复 · 闪黑窗**：所有 `reg.exe` 调用统一走 `reg_command()` 辅助函数，附加 `CREATE_NO_WINDOW` 创建标志，不再闪控制台窗口。
+  - **启动观感**：窗口配 `visible: false`，`main.ts` 中 Vue 挂载后经两帧 `requestAnimationFrame` 再 `show()`（需 `core:window:allow-show` 权限），用户看到的第一帧即完整界面，不再有空白窗口；`index.html` 内联纯 CSS loading 作为兜底。
+  - **文档**：项目定位由「STM32/嵌入式」收窄为「蓝讯（Bluetrum）方案」，示例标识符改用官方英文名。
 - `2026-08-06`：新增事件进展模块 + 坚果云多端同步；两轮防错重构。
   - **新功能 · 事件进展**：事件看板（新建 / 编辑 / 删除 / 星标 / 分类）· 进展节点（添加自动收敛上一个进行中、三态循环）· 归档 / 重开（归档时间独立存储）· 归档视图按月筛选（最多平铺 5 个，更早收进下拉）· 分类筛选叠加。
   - **新功能 · 云同步**：每设备独立存档互不覆盖 · 自动上传（10 分钟）· 篡改检测（内容指纹，异常拒绝上传 / 恢复，可强制覆盖）· 存档列表恢复 · 连接诊断向导 · 凭据跨项目共享 · 网络请求后台线程执行不卡界面。
