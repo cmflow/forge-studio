@@ -9,7 +9,7 @@
 
 - 阶段：**核心功能全部落地，可日常使用**
 - 版本：`0.1.0`
-- 更新日期：2026-08-07
+- 更新日期：2026-08-08
 
 后续每次功能落地或结构调整，都会同步更新本 README。
 
@@ -62,6 +62,7 @@
 - ✅ 所有失败通过 Naive UI Toast 提示，不闪退不卡死
 - ✅ 复制副本按钮防连点
 - ✅ 屏蔽 WebView 自带右键菜单（输入框内保留，便于粘贴）
+- ✅ 项目区域右键菜单（刷新项目），与 cbp/dcf 卡片右键互不串扰
 
 **启动与响应体验**
 - ✅ 窗口先隐藏（`visible: false`），前端绘制完成后再 `show()`，避免 WebView2 初始化期间的空白窗口
@@ -411,6 +412,9 @@ npm run tauri dev
 
 ## 十一、更新日志
 
+- `2026-08-08`：新增项目区域右键菜单（刷新项目）；定位 dev 模式窗口不显示根因。
+  - **新功能 · 项目右键菜单**：项目区域空白处右键弹出菜单（目前仅「刷新项目」，并行刷新列表与路径失效检查并提示数量）；cbp/dcf 卡片右键仍弹各自原有菜单（`stopPropagation` 防止冒泡串扰）。
+  - **问题定位 · dev 窗口不显示**：`cargo run` / `tauri dev` 跑在 Trae 沙箱会话（`SBOX_SHARED_DATA_NAME`、`TRAE_SANDBOX_SBOX_ID` 等环境变量）时，沙箱拦截 GUI 窗口创建与 WebView2 启动，`hwnd()` 返回 `Err`、无 WebView2 子进程，界面自然不可见。与代码无关（同一 exe 用 `Start-Process` 或系统终端直跑均正常）。**开发时请用系统原生终端跑 `npm run tauri dev`，或在 Trae 内分两步：沙箱终端跑 `npm run dev`（vite），再用 `Start-Process` 启动 `src-tauri\target\debug\forge-studio.exe`**。
 - `2026-08-07`：定位/卡顿/黑窗三处体验问题修复 + 启动观感优化。
   - **Bug 修复 · dcf 定位跳文档目录**：`explorer /select,` 在路径含空格时，Rust 的 `Command::arg` 会给整个参数加引号，explorer 识别不到 `/select` 就回退到默认文档目录。改用 `raw_arg` 精确控制命令行（引号只包路径），并统一反斜杠。
   - **Bug 修复 · 打开设置卡 3 秒**：`get_autostart` 同步调 `reg.exe` 子进程堵住 Tauri 命令线程池，导致整窗口冻结。改为 `async` + `spawn_blocking`；前端三个配置读取由串行 `await` 改 `Promise.all` 并行。

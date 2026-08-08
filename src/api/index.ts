@@ -48,6 +48,8 @@ export const renameProject = (id: string, newName: string) =>
   invoke<Project>("rename_project", { id, newName });
 export const scanProject = (id: string) =>
   invoke<Project>("scan_project", { id });
+export const rescanAllProjects = () =>
+  invoke<Project[]>("rescan_all_projects");
 export const selectCbp = (id: string, path: string) =>
   invoke<void>("select_cbp", { id, path });
 export const selectDcf = (id: string, path: string) =>

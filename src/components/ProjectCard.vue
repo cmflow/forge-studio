@@ -231,6 +231,7 @@ const dcfMenuY = ref(0);
 function onContextCbp(e: MouseEvent) {
   if (props.invalid || !hasMultiCbp.value) return;
   e.preventDefault();
+  e.stopPropagation(); // 阻止冒泡到项目区域右键菜单
   cbpMenuX.value = e.clientX;
   cbpMenuY.value = e.clientY;
   cbpMenuShow.value = false;
@@ -240,6 +241,7 @@ function onContextCbp(e: MouseEvent) {
 function onContextDcf(e: MouseEvent) {
   if (props.invalid || !hasDcf.value) return;
   e.preventDefault();
+  e.stopPropagation(); // 阻止冒泡到项目区域右键菜单
   dcfMenuX.value = e.clientX;
   dcfMenuY.value = e.clientY;
   dcfMenuShow.value = false;

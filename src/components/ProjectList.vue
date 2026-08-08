@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // 项目卡片列表
 import { computed, onMounted, ref } from "vue";
-import { NEmpty, NSpin, useMessage } from "naive-ui";
+import { NDropdown, NEmpty, NSpin, useMessage } from "naive-ui";
 import {
   addProject,
   checkProjects,
   duplicateProject,
-  listProjects,
+  rescanAllProjects,
 } from "../api";
 import type { Project } from "../types";
 import ProjectCard from "./ProjectCard.vue";
@@ -26,7 +26,8 @@ const duplicatingHint = ref("");
 async function refresh() {
   try {
     const [list, statuses] = await Promise.all([
-      listProjects(),
+      // 真正重扫磁盘上的 cbp/dcf（而不是重读缓存），才能反映增删变化
+      rescanAllProjects(),
       checkProjects(),
     ]);
     projects.value = list;
@@ -76,6 +77,24 @@ const visibleProjects = computed(() => {
   return filtered;
 });
 
+// ---------- 项目区域右键菜单（目前仅"刷新项目"） ----------
+const ctxMenuShow = ref(false);
+const ctxMenuX = ref(0);
+const ctxMenuY = ref(0);
+
+function onCtxMenu(e: MouseEvent) {
+  ctxMenuX.value = e.clientX;
+  ctxMenuY.value = e.clientY;
+  ctxMenuShow.value = true;
+}
+
+async function onCtxSelect(key: string) {
+  ctxMenuShow.value = false;
+  if (key !== "refresh") return;
+  await refresh();
+  message.success(`已刷新 ${projects.value.length} 个项目`);
+}
+
 async function onDuplicate(id: string) {
   if (duplicating.value) return;
   duplicating.value = true;
@@ -99,7 +118,12 @@ defineExpose({ refresh, handleDrop });
 </script>
 
 <template>
-  <div class="project-list" :class="{ 'drag-hover': dragHover }">
+  <!-- 右键菜单：挂在列表容器上，空白处或卡片上右键均可弹出（.cbp/.dcf 按钮有自己的右键菜单，不受影响） -->
+  <div
+    class="project-list"
+    :class="{ 'drag-hover': dragHover }"
+    @contextmenu.prevent="onCtxMenu"
+  >
     <NSpin v-if="firstLoading" size="small" />
     <NEmpty
       v-else-if="!visibleProjects.length"
@@ -129,6 +153,20 @@ defineExpose({ refresh, handleDrop });
         <div class="mask-hint">最多等待 120 秒</div>
       </div>
     </div>
+
+    <!-- 项目区域右键菜单 -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="ctxMenuX"
+      :y="ctxMenuY"
+      :options="[
+        { label: '🔄 刷新项目', key: 'refresh' },
+      ]"
+      :show="ctxMenuShow"
+      @select="onCtxSelect"
+      @clickoutside="ctxMenuShow = false"
+    />
   </div>
 </template>
 

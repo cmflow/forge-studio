@@ -33,6 +33,7 @@ pub fn run() {
             cmd_project::toggle_project_star,
             cmd_project::rename_project,
             cmd_project::scan_project,
+            cmd_project::rescan_all_projects,
             cmd_project::select_cbp,
             cmd_project::select_dcf,
             cmd_project::duplicate_project,

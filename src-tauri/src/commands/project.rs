@@ -162,6 +162,35 @@ pub fn scan_project(id: String) -> Result<Project, String> {
     Ok(result)
 }
 
+/// 重扫所有项目的 cbp/dcf（刷新时调用，反映磁盘上的增删变化）。
+/// 选中项若仍存在于磁盘则保留，否则清除（对应文件已被删除）。
+/// 异步 + spawn_blocking，避免大量目录扫描阻塞 UI 线程。
+#[tauri::command]
+pub async fn rescan_all_projects() -> Result<Vec<Project>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut list = load_all()?;
+        for p in list.iter_mut() {
+            let (cbp, dcf) = scan_dir(Path::new(&p.path));
+            p.selected_cbp = p
+                .selected_cbp
+                .as_ref()
+                .filter(|sel| cbp.iter().any(|c| c == *sel))
+                .cloned();
+            p.selected_dcf = p
+                .selected_dcf
+                .as_ref()
+                .filter(|sel| dcf.iter().any(|d| d == *sel))
+                .cloned();
+            p.cbp_files = cbp;
+            p.dcf_files = dcf;
+        }
+        save_all(&list)?;
+        Ok(list)
+    })
+    .await
+    .map_err(|e| format!("重扫任务异常: {}", e))?
+}
+
 #[tauri::command]
 pub fn select_cbp(id: String, path: String) -> Result<(), String> {
     let mut list = load_all()?;
